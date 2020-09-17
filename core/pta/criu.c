@@ -8,6 +8,7 @@
 #include <kernel/pseudo_ta.h>
 #include <mm/tee_pager.h>
 #include <mm/tee_mm.h>
+#include <mm/tee_mmu.h>
 #include <string.h>
 #include <string_ext.h>
 #include <malloc.h>
@@ -18,9 +19,20 @@
 		{ 0xd96a5b40, 0xe2c7, 0xb1af, \
 			{ 0x87, 0x94, 0x10, 0x02, 0xa5, 0xd5, 0xc6, 0x1c } }
 
-#define CRIU_PRINT_HELLO		0
+#define CHECKPOINT_UUID \
+		{ 0xd96a5b40, 0xe2c7, 0xb1af, \
+			{ 0x87, 0x94, 0x10, 0x02, 0xa5, 0xd5, 0xc6, 0x1d } }
 
-#define STATS_NB_POOLS			4
+#define CRIU_LOAD_CHECKPOINT	0
+#define CRIU_PRINT_HELLO		1
+
+static TEE_Result criu_load_checkpoint(struct tee_ta_session *s,
+			     uint32_t param_types,
+			     TEE_Param params[TEE_NUM_PARAMS]) {
+	DMSG("Load checkpoint");
+
+	return TEE_SUCCESS;
+}
 
 static TEE_Result criu_print_hello(uint32_t type, TEE_Param p[TEE_NUM_PARAMS])
 {
@@ -36,7 +48,11 @@ static TEE_Result invoke_command(void *psess __unused,
 				 uint32_t cmd, uint32_t ptypes,
 				 TEE_Param params[TEE_NUM_PARAMS])
 {
+	struct tee_ta_session *s = tee_ta_get_calling_session();
+
 	switch (cmd) {
+	case CRIU_LOAD_CHECKPOINT:
+		return criu_load_checkpoint(s, ptypes, params);
 	case CRIU_PRINT_HELLO:
 		return criu_print_hello(ptypes, params);
 	default:
