@@ -90,6 +90,10 @@ static inline TEE_Result tee_ta_init_user_ta_session(
 }
 #endif
 
+void criu_set_ta_ctx_ops(struct tee_ta_ctx *ctx);
+
+void criu_free_utc(struct user_ta_ctx *utc);
+
 /*
  * Registers a TA storage.
  *

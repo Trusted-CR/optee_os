@@ -580,6 +580,10 @@ static void free_utc(struct user_ta_ctx *utc)
 	free(utc);
 }
 
+void criu_free_utc(struct user_ta_ctx *utc) {
+	free_utc(utc);
+}
+
 static void user_ta_ctx_destroy(struct tee_ta_ctx *ctx)
 {
 	free_utc(to_user_ta_ctx(ctx));
@@ -620,6 +624,10 @@ service_init(init_user_ta);
 static void set_ta_ctx_ops(struct tee_ta_ctx *ctx)
 {
 	ctx->ops = _user_ta_ops;
+}
+
+void criu_set_ta_ctx_ops(struct tee_ta_ctx *ctx) {
+	set_ta_ctx_ops(ctx);
 }
 
 bool is_user_ta_ctx(struct tee_ta_ctx *ctx)
