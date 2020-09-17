@@ -94,6 +94,9 @@ void criu_set_ta_ctx_ops(struct tee_ta_ctx *ctx);
 
 void criu_free_utc(struct user_ta_ctx *utc);
 
+TEE_Result criu_alloc_and_map_ldelf_fobj(struct user_ta_ctx *utc, size_t sz,
+					   uint32_t prot, vaddr_t *va);
+
 /*
  * Registers a TA storage.
  *

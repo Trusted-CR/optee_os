@@ -3,8 +3,10 @@
  * Copyright (c) 2015, Linaro Limited
  */
 #include <kernel/pseudo_ta.h>
+#include <kernel/user_mode_ctx.h>
 #include <mm/tee_mmu.h>
 #include <mm/core_mmu.h>
+#include <string.h>
 
 #define TA_NAME		"criu.ta"
 

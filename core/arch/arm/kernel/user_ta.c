@@ -664,6 +664,13 @@ static TEE_Result alloc_and_map_ldelf_fobj(struct user_ta_ctx *utc, size_t sz,
 	return res;
 }
 
+TEE_Result criu_alloc_and_map_ldelf_fobj(struct user_ta_ctx *utc, size_t sz,
+					   uint32_t prot, vaddr_t *va)
+{
+	alloc_and_map_ldelf_fobj(utc, sz, prot, va);
+}
+
+
 /*
  * This function may leave a few mappings behind on error, but that's taken
  * care of by tee_ta_init_user_ta_session() since the entire context is
