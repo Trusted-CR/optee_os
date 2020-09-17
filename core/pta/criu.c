@@ -21,6 +21,13 @@
 #define CRIU_LOAD_CHECKPOINT	0
 #define CRIU_PRINT_HELLO		1
 
+const uint8_t binary_data[4096] __aligned(4096) = {
+	0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12,
+	0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12,
+	0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12,
+	0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12,
+	0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12 };
+
 static TEE_Result open_session(uint32_t param_types __unused,
 			       TEE_Param params[TEE_NUM_PARAMS] __unused,
 			       void **sess_ctx)
@@ -57,40 +64,92 @@ static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	 */
 	criu_set_ta_ctx_ops(&utc->uctx.ctx);
 
+
 	utc->uctx.ctx.uuid = *uuid;
-	res = vm_info_init(&utc->uctx);
+
+	uint32_t asid = asid_alloc();
+	if (!asid) {
+		DMSG("Failed to allocate ASID");
+		return TEE_ERROR_GENERIC;
+	}
+
+	memset(&utc->uctx.vm_info, 0, sizeof(&utc->uctx.vm_info));
+	TAILQ_INIT(&utc->uctx.vm_info.regions);
+	utc->uctx.vm_info.asid = asid;
+
+	DMSG("After:");
+	user_mode_ctx_print_mappings(&utc->uctx);
 
 	return utc;
 }
 
-static TEE_Result load_checkpoint_data() {
-	TEE_Result res;
-	struct user_mode_ctx uctx;
-	TEE_UUID uuid = { CHECKPOINT_UUID };
-
-	// Create the user TA
-	struct user_ta_ctx * utc = create_user_ta_ctx(&uuid);
-
-	// Delete the user TA again
-	pgt_flush_ctx(&utc->uctx.ctx);
-	criu_free_utc(utc);
-	
-	return TEE_SUCCESS;
-}
-
-static void jump_to_user_mode() {
+static void jump_to_user_mode(unsigned long entry_func) {
 	// JUMP TO USER MODE
 	unsigned long a0 = 0;
 	unsigned long a1 = 0;
 	unsigned long a2 = 0;
 	unsigned long a3 = 0;
 	unsigned long user_sp = 0;
-	unsigned long entry_func = 0x800;
 	bool is_32bit = false;
 	uint32_t *exit_status0 = NULL;
 	uint32_t *exit_status1 = NULL;
 
 	thread_enter_user_mode(a0, a1, a2, a3, user_sp, entry_func, is_32bit, exit_status0, exit_status1);
+}
+
+static TEE_Result load_checkpoint_data() {
+	TEE_Result res;
+	TEE_UUID uuid = { CHECKPOINT_UUID };
+
+	// Create the user TA
+	struct user_ta_ctx * utc = create_user_ta_ctx(&uuid);
+
+	vaddr_t stack_addr = 0;
+	vaddr_t code_addr = 0;
+
+	utc->is_32bit = false;
+
+	res = criu_alloc_and_map_ldelf_fobj(utc, 4096,
+				       TEE_MATTR_URW | TEE_MATTR_PRW,
+				       &stack_addr);
+	if (res)
+		return res;
+	utc->ldelf_stack_ptr = stack_addr + 4096;
+
+	res = criu_alloc_and_map_ldelf_fobj(utc, 4096, TEE_MATTR_PRW,
+				       &code_addr);
+	if (res)
+		return res;
+	utc->entry_func = code_addr + 0;
+
+	tee_mmu_set_ctx(&utc->uctx.ctx);
+
+	memcpy((void *)code_addr, binary_data, sizeof(binary_data));	
+
+	res = vm_set_prot(&utc->uctx, code_addr,
+			  ROUNDUP(sizeof(binary_data), SMALL_PAGE_SIZE),
+			  TEE_MATTR_URX);
+	if (res)
+		return res;
+
+	DMSG("MY BINARY LOAD ADDRESS %#"PRIxVA, code_addr);
+
+
+	utc->uctx.ctx.ref_count = 1;
+	condvar_init(&utc->uctx.ctx.busy_cv);
+	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->uctx.ctx, link);
+
+	tee_mmu_set_ctx(NULL);
+
+	user_mode_ctx_print_mappings(&utc->uctx);
+
+	jump_to_user_mode(code_addr);
+
+	// Delete the user TA again
+	pgt_flush_ctx(&utc->uctx.ctx);
+	criu_free_utc(utc);
+	
+	return TEE_SUCCESS;
 }
 
 static TEE_Result criu_load_checkpoint(uint32_t param_types,
