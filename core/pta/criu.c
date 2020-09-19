@@ -64,32 +64,20 @@ static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	 */
 	criu_set_ta_ctx_ops(&utc->uctx.ctx);
 
-
 	utc->uctx.ctx.uuid = *uuid;
-
-	uint32_t asid = asid_alloc();
-	if (!asid) {
-		DMSG("Failed to allocate ASID");
-		return TEE_ERROR_GENERIC;
-	}
-
-	memset(&utc->uctx.vm_info, 0, sizeof(&utc->uctx.vm_info));
-	TAILQ_INIT(&utc->uctx.vm_info.regions);
-	utc->uctx.vm_info.asid = asid;
-
-	DMSG("After:");
-	user_mode_ctx_print_mappings(&utc->uctx);
+	res = vm_info_init(&utc->uctx);
+	if (res)
+		return res;
 
 	return utc;
 }
 
-static void jump_to_user_mode(unsigned long entry_func) {
+static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp) {
 	// JUMP TO USER MODE
 	unsigned long a0 = 0;
 	unsigned long a1 = 0;
 	unsigned long a2 = 0;
 	unsigned long a3 = 0;
-	unsigned long user_sp = 0;
 	bool is_32bit = false;
 	uint32_t *exit_status0 = NULL;
 	uint32_t *exit_status1 = NULL;
@@ -100,10 +88,26 @@ static void jump_to_user_mode(unsigned long entry_func) {
 static TEE_Result load_checkpoint_data() {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
+	// TEE_Session sess;
+
+	struct tee_ta_session *s = calloc(1, sizeof(struct tee_ta_session));	
+	if (!s)
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+	s->cancel_mask = true;
+	condvar_init(&s->refc_cv);
+	condvar_init(&s->lock_cv);
+	s->lock_thread = THREAD_ID_INVALID;
+	s->ref_count = 1;
+
 
 	// Create the user TA
 	struct user_ta_ctx * utc = create_user_ta_ctx(&uuid);
 
+	s->ctx = &utc->uctx.ctx;
+
+	// tee_ta_get_current_session(&sess);
+	tee_ta_push_current_session(s);
 	vaddr_t stack_addr = 0;
 	vaddr_t code_addr = 0;
 
@@ -135,6 +139,8 @@ static TEE_Result load_checkpoint_data() {
 	DMSG("MY BINARY LOAD ADDRESS %#"PRIxVA, code_addr);
 
 
+	tee_ta_pop_current_session();
+
 	utc->uctx.ctx.ref_count = 1;
 	condvar_init(&utc->uctx.ctx.busy_cv);
 	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->uctx.ctx, link);
@@ -143,7 +149,9 @@ static TEE_Result load_checkpoint_data() {
 
 	user_mode_ctx_print_mappings(&utc->uctx);
 
-	jump_to_user_mode(code_addr);
+	tee_ta_push_current_session(s);
+	jump_to_user_mode(code_addr, utc->ldelf_stack_ptr);
+	tee_ta_pop_current_session();
 
 	// Delete the user TA again
 	pgt_flush_ctx(&utc->uctx.ctx);
