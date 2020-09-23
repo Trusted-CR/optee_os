@@ -7,6 +7,11 @@
 #include <mm/tee_mmu.h>
 #include <mm/core_mmu.h>
 #include <string.h>
+#include <tee_syscall_numbers.h>
+#include <tee/arch_svc.h>
+
+// Stolen from arch_svc_private.h
+typedef void (*syscall_t)(void);
 
 #define TA_NAME		"criu.ta"
 
@@ -76,16 +81,15 @@ static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp) {
 	unsigned long a2 = 0;
 	unsigned long a3 = 0;
 	bool is_32bit = false;
-	uint32_t *exit_status0 = NULL;
-	uint32_t *exit_status1 = NULL;
+	uint32_t exit_status0 = 0;
+	uint32_t exit_status1 = 0;
 
-	thread_enter_user_mode(a0, a1, a2, a3, user_sp, entry_func, is_32bit, exit_status0, exit_status1);
+	thread_enter_user_mode(a0, a1, a2, a3, user_sp, entry_func, is_32bit, &exit_status0, &exit_status1);
 }
 
 static TEE_Result load_checkpoint_data() {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
-	// TEE_Session sess;
 
 	struct tee_ta_session *s = calloc(1, sizeof(struct tee_ta_session));	
 	if (!s)
@@ -103,7 +107,6 @@ static TEE_Result load_checkpoint_data() {
 
 	s->ctx = &utc->uctx.ctx;
 
-	// tee_ta_get_current_session(&sess);
 	tee_ta_push_current_session(s);
 	vaddr_t stack_addr = 0;
 	vaddr_t code_addr = 0;
