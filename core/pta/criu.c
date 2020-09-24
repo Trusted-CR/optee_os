@@ -154,8 +154,11 @@ static TEE_Result load_checkpoint_data() {
 	tee_ta_pop_current_session();
 
 	// Delete the user TA again
+	condvar_destroy(&utc->uctx.ctx.busy_cv);
 	pgt_flush_ctx(&utc->uctx.ctx);
+	TAILQ_REMOVE(&tee_ctxes, &utc->uctx.ctx, link);
 	criu_free_utc(utc);
+	free(s);
 	
 	return TEE_SUCCESS;
 }
