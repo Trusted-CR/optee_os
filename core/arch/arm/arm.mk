@@ -2,7 +2,7 @@ CFG_LTC_OPTEE_THREAD ?= y
 # Size of emulated TrustZone protected SRAM, 448 kB.
 # Only applicable when paging is enabled.
 CFG_CORE_TZSRAM_EMUL_SIZE ?= 458752
-CFG_LPAE_ADDR_SPACE_SIZE ?= (1ull << 32)
+CFG_LPAE_ADDR_SPACE_SIZE ?= (1ull << 39)
 
 CFG_MMAP_REGIONS ?= 13
 CFG_RESERVED_VASPACE_SIZE ?= (1024 * 1024 * 10)
@@ -76,7 +76,7 @@ endif
 # from user space and restore kernel mode mapping again. This gives more
 # strict control over what is accessible while in user mode.
 # Addresses CVE-2017-5715 (aka Meltdown) known to affect Arm Cortex-A75
-CFG_CORE_UNMAP_CORE_AT_EL0 ?= y
+CFG_CORE_UNMAP_CORE_AT_EL0 ?= n
 
 # Initialize PMCR.DP to 1 to prohibit cycle counting in secure state, and
 # save/restore PMCR during world switch.

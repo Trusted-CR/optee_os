@@ -87,6 +87,15 @@ static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp) {
 	thread_enter_user_mode(a0, a1, a2, a3, user_sp, entry_func, is_32bit, &exit_status0, &exit_status1);
 }
 
+static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * utc) {
+	// Delete the user TA again
+	condvar_destroy(&utc->uctx.ctx.busy_cv);
+	pgt_flush_ctx(&utc->uctx.ctx);
+	TAILQ_REMOVE(&tee_ctxes, &utc->uctx.ctx, link);
+	criu_free_utc(utc);
+	free(s);
+}
+
 static TEE_Result load_checkpoint_data() {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
@@ -153,13 +162,8 @@ static TEE_Result load_checkpoint_data() {
 	jump_to_user_mode(code_addr, utc->ldelf_stack_ptr);
 	tee_ta_pop_current_session();
 
-	// Delete the user TA again
-	condvar_destroy(&utc->uctx.ctx.busy_cv);
-	pgt_flush_ctx(&utc->uctx.ctx);
-	TAILQ_REMOVE(&tee_ctxes, &utc->uctx.ctx, link);
-	criu_free_utc(utc);
-	free(s);
-	
+	cleanup_allocations(s, utc);
+
 	return TEE_SUCCESS;
 }
 
