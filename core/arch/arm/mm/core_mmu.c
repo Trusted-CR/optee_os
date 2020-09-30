@@ -1890,6 +1890,31 @@ void core_mmu_populate_user_map(struct core_mmu_table_info *dir_info,
 		set_pg_region(dir_info, r, &pgt, &pg_info);
 }
 
+void core_mmu_populate_user_map_new(struct core_mmu_table_info *dir_info,
+				struct user_mode_ctx *uctx)
+{
+	struct core_mmu_table_info pg_info = { };
+	struct pgt_cache *pgt_cache = &thread_get_tsd()->pgt_cache;
+	struct pgt *pgt = NULL;
+
+	vaddr_t b;
+	vaddr_t e;
+	struct vm_region *r;
+
+	// pgt_free(pgt_cache, false);
+
+	/*
+	* Allocate all page tables in advance.
+	*/
+	pgt_alloc_regions(pgt_cache, &uctx->vm_info, uctx);
+	pgt = SLIST_FIRST(pgt_cache);
+
+	core_mmu_set_info_table(&pg_info, dir_info->level + 1, 0, NULL);
+
+	TAILQ_FOREACH(r, &uctx->vm_info.regions, link)
+		set_pg_region(dir_info, r, &pgt, &pg_info);
+}
+
 bool core_mmu_add_mapping(enum teecore_memtypes type, paddr_t addr, size_t len)
 {
 	struct core_mmu_table_info tbl_info;

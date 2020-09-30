@@ -136,6 +136,27 @@ static size_t get_num_req_pgts(struct user_mode_ctx *uctx, vaddr_t *begin,
 	return (e - b) >> CORE_MMU_PGDIR_SHIFT;
 }
 
+static size_t get_num_req_pgts_new(struct vm_region * reg, vaddr_t *begin,
+			       vaddr_t *end)
+{
+	vaddr_t b;
+	vaddr_t e;
+
+	if (reg == NULL) {
+		core_mmu_get_user_va_range(&b, NULL);
+		e = b;
+	} else {
+		b = ROUNDDOWN(reg->va, CORE_MMU_PGDIR_SIZE);
+		e = ROUNDUP(reg->va + reg->size, CORE_MMU_PGDIR_SIZE);
+	}
+
+	if (begin)
+		*begin = b;
+	if (end)
+		*end = e;
+	return (e - b) >> CORE_MMU_PGDIR_SHIFT;
+}
+
 static TEE_Result alloc_pgt(struct user_mode_ctx *uctx)
 {
 	struct thread_specific_data *tsd __maybe_unused;
@@ -144,6 +165,40 @@ static TEE_Result alloc_pgt(struct user_mode_ctx *uctx)
 	size_t ntbl;
 
 	ntbl = get_num_req_pgts(uctx, &b, &e);
+	if (!pgt_check_avail(ntbl)) {
+		EMSG("%zu page tables not available", ntbl);
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+
+#ifdef CFG_PAGED_USER_TA
+	tsd = thread_get_tsd();
+	if (&uctx->ctx == tsd->ctx) {
+		/*
+		 * The supplied utc is the current active utc, allocate the
+		 * page tables too as the pager needs to use them soon.
+		 */
+		pgt_alloc(&tsd->pgt_cache, &uctx->ctx, b, e - 1);
+	}
+#endif
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
+{
+	struct thread_specific_data *tsd __maybe_unused;
+	vaddr_t b;
+	vaddr_t e;
+	size_t ntbl = 0;
+	struct vm_region *r;
+
+	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
+		size_t t = get_num_req_pgts_new(r, &b, &e);
+		ntbl += t;
+		DMSG("VA: %p - %p", b, e);
+	}
+
+	DMSG("NEED %d PAGE TABLES", ntbl);
 	if (!pgt_check_avail(ntbl)) {
 		EMSG("%zu page tables not available", ntbl);
 		return TEE_ERROR_OUT_OF_MEMORY;

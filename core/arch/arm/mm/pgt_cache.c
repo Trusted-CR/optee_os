@@ -447,6 +447,41 @@ static bool pgt_alloc_unlocked(struct pgt_cache *pgt_cache, void *ctx,
 	return true;
 }
 
+void pgt_alloc_regions(struct pgt_cache *pgt_cache, struct vm_info *vm_info, void * ctx) {
+	struct vm_region *r;
+
+	mutex_lock(&pgt_mu);
+
+	pgt_free_unlocked(pgt_cache, ctx);
+
+	struct pgt *p;
+	struct pgt *pp = NULL;
+	TAILQ_FOREACH(r, &vm_info->regions, link) {
+		DMSG("ALLOCATING PAGE TABLES: %p - %p", r->va, r->va + r->size - 1);
+
+		const vaddr_t base = ROUNDDOWN(r->va, CORE_MMU_PGDIR_SIZE);
+		const size_t num_tbls = ((r->va + r->size - base) >> CORE_MMU_PGDIR_SHIFT) + 1;
+		size_t n = 0;		
+
+		while (n < num_tbls) {
+			p = pop_from_some_list(base + n * CORE_MMU_PGDIR_SIZE, ctx);
+			if (!p) {
+				pgt_free_unlocked(pgt_cache, ctx);
+				break;
+			}
+
+			if (pp)
+				SLIST_INSERT_AFTER(pp, p, link);
+			else
+				SLIST_INSERT_HEAD(pgt_cache, p, link);
+			pp = p;
+			n++;
+		}	
+	}	
+
+	mutex_unlock(&pgt_mu);
+}
+
 void pgt_alloc(struct pgt_cache *pgt_cache, void *ctx,
 	       vaddr_t begin, vaddr_t last)
 {

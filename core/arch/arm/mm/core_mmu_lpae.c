@@ -645,6 +645,7 @@ void core_mmu_create_user_map(struct user_mode_ctx *uctx,
 	core_mmu_get_user_pgdir(&dir_info);
 	memset(dir_info.table, 0, PGT_SIZE);
 	core_mmu_populate_user_map(&dir_info, uctx);
+	// core_mmu_populate_user_map_new(&dir_info, uctx);
 	map->user_map = virt_to_phys(dir_info.table) | TABLE_DESC;
 	map->asid = uctx->vm_info.asid;
 }
@@ -810,7 +811,7 @@ void core_mmu_get_user_va_range(vaddr_t *base, size_t *size)
 	if (base)
 		*base = (vaddr_t)user_va_idx << L1_XLAT_ADDRESS_SHIFT;
 	if (size)
-		*size = 1 << L1_XLAT_ADDRESS_SHIFT;
+		*size = CFG_LPAE_ADDR_SPACE_SIZE;//1 << L1_XLAT_ADDRESS_SHIFT;
 }
 
 bool core_mmu_user_mapping_is_active(void)
