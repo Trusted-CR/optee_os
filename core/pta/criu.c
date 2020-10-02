@@ -26,7 +26,7 @@ typedef void (*syscall_t)(void);
 #define CRIU_LOAD_CHECKPOINT	0
 #define CRIU_PRINT_HELLO		1
 
-const uint8_t binary_data[4096] __aligned(4096) = {
+const uint8_t binary_data[4096] __aligned(4096) = { 0,0,0,0,0,0,
 	0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 0x80, 0xd2,
 	0x01, 0x00, 0x00, 0xd4 };
 
@@ -43,6 +43,34 @@ static void close_session(void *sess_ctx)
 {
 	DMSG("Closed session to %s", TA_NAME);
 }
+
+// bool checkpoint_ta_handle_svc(struct thread_svc_regs *regs)
+// {
+// 	size_t scn;
+// 	size_t max_args;
+// 	syscall_t scf;
+
+// 	get_scn_max_args(regs, &scn, &max_args);
+
+// 	trace_syscall(scn);
+
+// 	if (max_args > TEE_SVC_MAX_ARGS) {
+// 		DMSG("Too many arguments for SCN %zu (%zu)", scn, max_args);
+// 		set_svc_retval(regs, TEE_ERROR_GENERIC);
+// 		return true; /* return to user mode */
+// 	}
+
+// 	scf = get_syscall_func(scn);
+
+// 	set_svc_retval(regs, 0);
+// 	// set_svc_retval(regs, tee_svc_do_call(regs, scf));
+
+// 	/*
+// 	 * Return true if we're to return to user mode,
+// 	 * thread_svc_handler() will take care of the rest.
+// 	 */
+// 	return scn != TEE_SCN_RETURN && scn != TEE_SCN_PANIC;
+// }
 
 static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	TEE_Result res;
@@ -117,8 +145,8 @@ static TEE_Result load_checkpoint_data() {
 	s->ctx = &utc->uctx.ctx;
 
 	tee_ta_push_current_session(s);
-	vaddr_t stack_addr = 0;
-	vaddr_t code_addr = 0;
+	vaddr_t stack_addr = 0x80005000;
+	vaddr_t code_addr = 0x40007000;
 
 	utc->is_32bit = false;
 
@@ -129,6 +157,7 @@ static TEE_Result load_checkpoint_data() {
 		return res;
 	utc->ldelf_stack_ptr = stack_addr + 4096;
 
+	DMSG("CRIU - ALLOC code: %p", code_addr);
 	res = criu_alloc_and_map_ldelf_fobj(utc, 4096, TEE_MATTR_PRW,
 				       &code_addr);
 	if (res)

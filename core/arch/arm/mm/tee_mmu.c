@@ -157,14 +157,21 @@ static size_t get_num_req_pgts_new(struct vm_region * reg, vaddr_t *begin,
 	return (e - b) >> CORE_MMU_PGDIR_SHIFT;
 }
 
-static TEE_Result alloc_pgt(struct user_mode_ctx *uctx)
+static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
 {
 	struct thread_specific_data *tsd __maybe_unused;
 	vaddr_t b;
 	vaddr_t e;
-	size_t ntbl;
+	size_t ntbl = 0;
+	struct vm_region *r;
 
-	ntbl = get_num_req_pgts(uctx, &b, &e);
+	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
+		size_t t = get_num_req_pgts_new(r, &b, &e);
+		ntbl += t;
+		DMSG("VA: %p - %p", b, e);
+	}
+
+	DMSG("NEED %d PAGE TABLES", ntbl);
 	if (!pgt_check_avail(ntbl)) {
 		EMSG("%zu page tables not available", ntbl);
 		return TEE_ERROR_OUT_OF_MEMORY;
@@ -184,21 +191,19 @@ static TEE_Result alloc_pgt(struct user_mode_ctx *uctx)
 	return TEE_SUCCESS;
 }
 
-static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
+static TEE_Result alloc_pgt(struct user_mode_ctx *uctx)
 {
+#define TEST_NEW_MAPPING 1
+#ifdef TEST_NEW_MAPPING
+	return alloc_pgt_new(uctx);
+#endif
+
 	struct thread_specific_data *tsd __maybe_unused;
 	vaddr_t b;
 	vaddr_t e;
-	size_t ntbl = 0;
-	struct vm_region *r;
+	size_t ntbl;
 
-	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
-		size_t t = get_num_req_pgts_new(r, &b, &e);
-		ntbl += t;
-		DMSG("VA: %p - %p", b, e);
-	}
-
-	DMSG("NEED %d PAGE TABLES", ntbl);
+	ntbl = get_num_req_pgts(uctx, &b, &e);
 	if (!pgt_check_avail(ntbl)) {
 		EMSG("%zu page tables not available", ntbl);
 		return TEE_ERROR_OUT_OF_MEMORY;
@@ -1302,8 +1307,49 @@ TEE_Result tee_mmu_check_access_rights(const struct user_mode_ctx *uctx,
 	return TEE_SUCCESS;
 }
 
+void tee_mmu_set_ctx_new(struct tee_ta_ctx *ctx)
+{
+	struct thread_specific_data *tsd = thread_get_tsd();
+
+	core_mmu_set_user_map(NULL);
+	/*
+	 * No matter what happens below, the current user TA will not be
+	 * current any longer. Make sure pager is in sync with that.
+	 * This function has to be called before there's a chance that
+	 * pgt_free_unlocked() is called.
+	 *
+	 * Save translation tables in a cache if it's a user TA.
+	 */
+	pgt_free(&tsd->pgt_cache, is_user_ta_ctx(tsd->ctx));
+
+	if (is_user_mode_ctx(ctx)) {
+		struct user_mode_ctx *uctx = to_user_mode_ctx(ctx);
+		struct core_mmu_user_map_head map;
+		TAILQ_INIT(&map);
+
+			// struct core_mmu_user_map m1 = { .index = 0 };
+			// struct core_mmu_user_map m2 = { .index = 3 };
+			// struct core_mmu_user_map m3 = { .index = 2 };
+			// TAILQ_INSERT_TAIL(&map, &m1, link);
+			// TAILQ_INSERT_TAIL(&map, &m2, link);
+			// TAILQ_INSERT_TAIL(&map, &m3, link);
+
+			// struct core_mmu_user_map * m;
+			// TAILQ_FOREACH(m, &map, link) {
+			// 	DMSG("EWAAA: %d", m->index);
+			// }
+		
+		core_mmu_create_user_map_new(uctx, &map);
+		core_mmu_set_user_map_new(&map);
+		tee_pager_assign_um_tables(uctx);
+	}
+	tsd->ctx = ctx;
+}
+
 void tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 {
+	tee_mmu_set_ctx_new(ctx);
+	return;
 	struct thread_specific_data *tsd = thread_get_tsd();
 
 	core_mmu_set_user_map(NULL);

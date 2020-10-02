@@ -15,7 +15,7 @@ void core_mmu_set_info_table(struct core_mmu_table_info *tbl_info,
 			     unsigned level, vaddr_t va_base, void *table);
 void core_mmu_populate_user_map(struct core_mmu_table_info *dir_info,
 				struct user_mode_ctx *uctx);
-void core_mmu_populate_user_map_new(struct core_mmu_table_info *dir_info,
+void core_mmu_populate_user_map_new(struct core_mmu_user_map_head *map,
 				struct user_mode_ctx *uctx);
 void core_mmu_map_region(struct mmu_partition *prtn,
 			 struct tee_mmap_region *mm);

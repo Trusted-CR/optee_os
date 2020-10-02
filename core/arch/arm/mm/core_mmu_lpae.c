@@ -611,6 +611,10 @@ void core_init_mmu_regs(struct core_mmu_config *cfg)
 }
 #endif /*ARM64*/
 
+uint64_t core_mmu_get_l1_xlat_address_shift() {
+	return L1_XLAT_ADDRESS_SHIFT;
+}
+
 void core_mmu_set_info_table(struct core_mmu_table_info *tbl_info,
 		unsigned level, vaddr_t va_base, void *table)
 {
@@ -645,9 +649,16 @@ void core_mmu_create_user_map(struct user_mode_ctx *uctx,
 	core_mmu_get_user_pgdir(&dir_info);
 	memset(dir_info.table, 0, PGT_SIZE);
 	core_mmu_populate_user_map(&dir_info, uctx);
-	// core_mmu_populate_user_map_new(&dir_info, uctx);
 	map->user_map = virt_to_phys(dir_info.table) | TABLE_DESC;
 	map->asid = uctx->vm_info.asid;
+}
+
+void core_mmu_create_user_map_new(struct user_mode_ctx *uctx,
+			      struct core_mmu_user_map_head *map)
+{
+	COMPILE_TIME_ASSERT(sizeof(uint64_t) * XLAT_TABLE_ENTRIES == PGT_SIZE);
+
+	core_mmu_populate_user_map_new(map, uctx);
 }
 
 bool core_mmu_find_table(struct mmu_partition *prtn, vaddr_t va,
@@ -926,6 +937,60 @@ void core_mmu_get_user_map(struct core_mmu_user_map *map)
 	} else {
 		map->asid = 0;
 	}
+}
+
+void core_mmu_set_user_map_new(struct core_mmu_user_map_head *map)
+{
+	uint64_t ttbr;
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
+	struct mmu_partition *prtn = get_prtn();
+
+	ttbr = read_ttbr0_el1();
+	/* Clear ASID */
+	ttbr &= ~((uint64_t)TTBR_ASID_MASK << TTBR_ASID_SHIFT);
+	write_ttbr0_el1(ttbr);
+	isb();
+	
+	struct core_mmu_user_map * m = NULL;
+	/* Set the new map */
+	if (map && !TAILQ_EMPTY(map)) {
+		uint64_t asid = 0;
+		TAILQ_FOREACH(m, map, link) {
+			if(m->user_map != NULL)
+				prtn->l1_tables[0][get_core_pos()][m->index] =
+					m->user_map;
+			asid = m->asid;
+		}
+		
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+		TAILQ_FOREACH(m, map, link) {
+			if(m->user_map != NULL)
+				prtn->l1_tables[1][get_core_pos()][m->index] =
+						m->user_map;
+		}
+#endif
+		dsb();	/* Make sure the write above is visible */
+		ttbr |= ((uint64_t)asid << TTBR_ASID_SHIFT);
+		write_ttbr0_el1(ttbr);
+		isb();
+	} else {
+		TAILQ_FOREACH(m, map, link) {
+			if(m->user_map != NULL)
+				prtn->l1_tables[0][get_core_pos()][m->index] = 0;
+		}
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+		TAILQ_FOREACH(m, map, link) {
+			if(m->user_map != NULL)
+				prtn->l1_tables[1][get_core_pos()][m->index] = 0;
+		}
+#endif
+		dsb();	/* Make sure the write above is visible */
+	}
+
+	tlbi_all();
+	icache_inv_all();
+
+	thread_unmask_exceptions(exceptions);
 }
 
 void core_mmu_set_user_map(struct core_mmu_user_map *map)

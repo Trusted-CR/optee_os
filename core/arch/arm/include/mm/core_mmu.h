@@ -314,6 +314,8 @@ bool core_mmu_place_tee_ram_at_top(paddr_t paddr);
 struct core_mmu_user_map {
 	uint64_t user_map;
 	uint32_t asid;
+	uint32_t index;
+	TAILQ_ENTRY(core_mmu_user_map) link;
 };
 #else
 /*
@@ -327,8 +329,11 @@ struct core_mmu_user_map {
 struct core_mmu_user_map {
 	uint32_t ttbr0;
 	uint32_t ctxid;
+	TAILQ_ENTRY(core_mmu_user_map) link;
 };
 #endif
+
+TAILQ_HEAD(core_mmu_user_map_head, core_mmu_user_map);
 
 #ifdef CFG_WITH_LPAE
 bool core_mmu_user_va_range_is_defined(void);
@@ -403,6 +408,9 @@ uint32_t core_mmu_type_to_attr(enum teecore_memtypes t);
  */
 void core_mmu_create_user_map(struct user_mode_ctx *uctx,
 			      struct core_mmu_user_map *map);
+
+void core_mmu_create_user_map_new(struct user_mode_ctx *uctx,
+			      struct core_mmu_user_map_head *map);
 /*
  * core_mmu_get_user_map() - Reads current MMU configuration for user VA space
  * @map:	MMU configuration for current user VA space.
@@ -416,6 +424,7 @@ void core_mmu_get_user_map(struct core_mmu_user_map *map);
  */
 void core_mmu_set_user_map(struct core_mmu_user_map *map);
 
+void core_mmu_set_user_map_new(struct core_mmu_user_map_head *map);
 /*
  * struct core_mmu_table_info - Properties for a translation table
  * @table:	Pointer to translation table
@@ -644,6 +653,8 @@ bool cpu_mmu_enabled(void);
 
 /* Do section mapping, not support on LPAE */
 void map_memarea_sections(const struct tee_mmap_region *mm, uint32_t *ttb);
+
+uint64_t core_mmu_get_l1_xlat_address_shift();
 
 #ifdef CFG_CORE_DYN_SHM
 /*

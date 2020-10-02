@@ -1502,6 +1502,7 @@ TEE_Result cache_op_outer(enum cache_op op, paddr_t pa, size_t len)
 void core_mmu_set_entry(struct core_mmu_table_info *tbl_info, unsigned idx,
 			paddr_t pa, uint32_t attr)
 {
+	DMSG("IDX: %d - NUM_ENTRIES: %d", idx, tbl_info->num_entries);
 	assert(idx < tbl_info->num_entries);
 	core_mmu_set_entry_primitive(tbl_info->table, tbl_info->level,
 				     idx, pa, attr);
@@ -1890,16 +1891,22 @@ void core_mmu_populate_user_map(struct core_mmu_table_info *dir_info,
 		set_pg_region(dir_info, r, &pgt, &pg_info);
 }
 
-void core_mmu_populate_user_map_new(struct core_mmu_table_info *dir_info,
+void core_mmu_populate_user_map_new(struct core_mmu_user_map_head *map,
 				struct user_mode_ctx *uctx)
 {
+	struct core_mmu_table_info dir_info;
+
+	core_mmu_get_user_pgdir(&dir_info);
+	memset(dir_info.table, 0, PGT_SIZE);
+
 	struct core_mmu_table_info pg_info = { };
 	struct pgt_cache *pgt_cache = &thread_get_tsd()->pgt_cache;
 	struct pgt *pgt = NULL;
 
-	vaddr_t b;
-	vaddr_t e;
-	struct vm_region *r;
+
+#define TABLE_DESC		0x3
+	
+	
 
 	// pgt_free(pgt_cache, false);
 
@@ -1909,10 +1916,51 @@ void core_mmu_populate_user_map_new(struct core_mmu_table_info *dir_info,
 	pgt_alloc_regions(pgt_cache, &uctx->vm_info, uctx);
 	pgt = SLIST_FIRST(pgt_cache);
 
-	core_mmu_set_info_table(&pg_info, dir_info->level + 1, 0, NULL);
+	core_mmu_set_info_table(&pg_info, dir_info.level + 1, 0, NULL);
 
-	TAILQ_FOREACH(r, &uctx->vm_info.regions, link)
-		set_pg_region(dir_info, r, &pgt, &pg_info);
+	struct core_mmu_user_map * m;
+	struct vm_region *r;
+	struct core_mmu_user_map m1 = { };
+	m1.index = 1;
+	core_mmu_get_user_pgdir(&dir_info);
+	memset(dir_info.table, 0, PGT_SIZE);
+	m1.user_map = virt_to_phys(dir_info.table) | TABLE_DESC;
+	m1.asid = uctx->vm_info.asid;
+
+	TAILQ_INSERT_TAIL(map, &m1, link);
+	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
+		bool map_found = false;
+
+		uint32_t map_index = r->va >> core_mmu_get_l1_xlat_address_shift();
+		TAILQ_FOREACH(m, map, link) {
+			if(m->index == map_index) {
+				map_found = true;
+				break;
+			}
+		}
+
+		if(!map_found) {
+			m1.index = map_index;
+			core_mmu_get_user_pgdir(&dir_info);
+			memset(dir_info.table, 0, PGT_SIZE);
+			m1.user_map = virt_to_phys(dir_info.table) | TABLE_DESC;
+			m1.asid = uctx->vm_info.asid;
+
+			TAILQ_INSERT_TAIL(map, &m1, link);
+			DMSG("INSERTING MAP");
+		}
+
+		uint64_t addr = r->va >> core_mmu_get_l1_xlat_address_shift() << core_mmu_get_l1_xlat_address_shift();
+		DMSG("SET_PG_REGION: DIR_INFO->VA_BASE: %p, R: %p, NEED: %p", dir_info.va_base, r->va, addr);
+		set_pg_region(&dir_info, r, &pgt, &pg_info);
+	}
+	TAILQ_FOREACH(m, map, link) {
+		DMSG("EWAAA: %d", m->index);
+	}
+	DMSG("ARRIVED2");
+
+	// map->user_map = virt_to_phys(dir_info.table) | TABLE_DESC;
+	// map->asid = uctx->vm_info.asid;
 }
 
 bool core_mmu_add_mapping(enum teecore_memtypes type, paddr_t addr, size_t len)

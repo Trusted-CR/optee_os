@@ -1,5 +1,14 @@
 {
     "files.associations": {
-        "string_view": "c"
+        "string_view": "c",
+        "atomic": "cpp",
+        "cstdint": "cpp",
+        "memory": "cpp",
+        "*.tcc": "c",
+        "memory_resource": "c",
+        "bit": "cpp",
+        "random": "cpp",
+        "fstream": "cpp",
+        "sstream": "cpp"
     }
 }

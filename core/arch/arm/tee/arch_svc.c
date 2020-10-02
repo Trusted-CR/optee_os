@@ -245,6 +245,9 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		return true; /* return to user mode */
 	}
 
+	if(scn == 93)
+		scn = TEE_SCN_RETURN;
+
 	scf = get_syscall_func(scn);
 
 	ftrace_syscall_enter(scn);
