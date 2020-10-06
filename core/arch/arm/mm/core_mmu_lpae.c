@@ -635,6 +635,15 @@ void core_mmu_get_user_pgdir(struct core_mmu_table_info *pgd_info)
 	core_mmu_set_info_table(pgd_info, 2, va_range_base, tbl);
 }
 
+void core_mmu_create_map(struct user_mode_ctx *uctx,
+			      struct core_mmu_map *map)
+{	
+	TAILQ_INIT(&map->l1_entries);
+	map->asid = 1;
+
+	core_mmu_populate_map(map, uctx);
+}
+
 void core_mmu_create_user_map(struct user_mode_ctx *uctx,
 			      struct core_mmu_user_map *map)
 {
@@ -926,6 +935,53 @@ void core_mmu_get_user_map(struct core_mmu_user_map *map)
 	} else {
 		map->asid = 0;
 	}
+}
+
+void core_mmu_set_map(struct core_mmu_map *map) {
+	struct core_mmu_map_l1_entry * l1_entry = NULL;
+	// TAILQ_FOREACH(l1_entry, &map->l1_entries, link) {
+	// 	DMSG("l1_entry: %d", l1_entry->idx);
+	// }
+
+	// return;
+
+	uint64_t ttbr;
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
+	struct mmu_partition *prtn = get_prtn();
+
+	ttbr = read_ttbr0_el1();
+	/* Clear ASID */
+	ttbr &= ~((uint64_t)TTBR_ASID_MASK << TTBR_ASID_SHIFT);
+	write_ttbr0_el1(ttbr);
+	isb();
+
+	/* Set the new map */
+	if (map && &map->l1_entries) {
+		TAILQ_FOREACH(l1_entry, &map->l1_entries, link) {
+			// prtn->l1_tables[0][get_core_pos()][l1_entry->idx] =
+				// l1_entry->table;
+			DMSG("prtn->l1_tables[0][%d][%d] = %p", get_core_pos(), l1_entry->idx, l1_entry->table);
+		}
+		
+		dsb();	/* Make sure the write above is visible */
+		ttbr |= ((uint64_t)map->asid << TTBR_ASID_SHIFT);
+		write_ttbr0_el1(ttbr);
+		isb();
+	} else {
+		// TODO: CHANGE THIS
+
+		TAILQ_FOREACH(l1_entry, &map->l1_entries, link) {
+			// prtn->l1_tables[0][get_core_pos()][l1_entry->idx] = 0;
+			DMSG("prtn->l1_tables[0][%d][%d] = 0", get_core_pos(), l1_entry->idx);
+		}
+		
+		dsb();	/* Make sure the write above is visible */
+	}
+
+	tlbi_all();
+	icache_inv_all();
+
+	thread_unmask_exceptions(exceptions);
 }
 
 void core_mmu_set_user_map(struct core_mmu_user_map *map)

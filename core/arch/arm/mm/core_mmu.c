@@ -1891,6 +1891,57 @@ void core_mmu_populate_user_map(struct core_mmu_table_info *dir_info,
 		set_pg_region(dir_info, r, &pgt, &pg_info);
 }
 
+void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
+{
+	struct vm_region *r = NULL;
+	struct core_mmu_map_l1_entry * e = NULL;
+
+	struct pgt_cache *pgt_cache = &thread_get_tsd()->pgt_cache;
+	struct pgt *pgt = NULL;
+
+	// pgt_alloc_regions(pgt_cache, &uctx->vm_info, uctx);
+	// pgt = SLIST_FIRST(pgt_cache);
+
+#define L1_XLAT_ADDRESS_SHIFT 30
+
+	// Loop through all VM regions
+	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
+		DMSG("AREA: %p-%p - %d", r->va, r->va + r->size, r->va >> L1_XLAT_ADDRESS_SHIFT);
+		bool l1_found = false;
+
+		TAILQ_FOREACH(e, &map->l1_entries, link) {
+			if(e->idx == (r->va >> L1_XLAT_ADDRESS_SHIFT)) {
+				DMSG("l1 found!: %d", e->idx);
+				l1_found = true;
+				break;
+			}
+		}
+
+		struct core_mmu_table_info l2_table_info = { };
+		if(!l1_found) {
+			e = calloc(1, sizeof(struct core_mmu_map_l1_entry));
+			e->idx = r->va >> L1_XLAT_ADDRESS_SHIFT;
+			DMSG("l1 not found, allocating..: %p-%p", e->idx << L1_XLAT_ADDRESS_SHIFT, (e->idx + 1) << L1_XLAT_ADDRESS_SHIFT);
+
+			uint64_t * l2_table = calloc(1, PGT_SIZE);
+			core_mmu_set_info_table(&l2_table_info, 2, e->idx << L1_XLAT_ADDRESS_SHIFT, l2_table);
+			memset(l2_table_info.table, 0, PGT_SIZE);
+
+			e->table = virt_to_phys(l2_table_info.table) | 0x3; // TABLE_DESC;
+
+			TAILQ_INSERT_TAIL(&map->l1_entries, e, link);
+		}
+
+		struct core_mmu_table_info l3_table = { };
+		core_mmu_set_info_table(&l3_table, l2_table_info.level + 1, 0, NULL);
+	
+
+
+
+		//set_pg_region(dir_info, r, &pgt, &pg_info);
+	}
+}
+
 void core_mmu_populate_user_map_new(struct core_mmu_table_info *dir_info,
 				struct user_mode_ctx *uctx)
 {
