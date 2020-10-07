@@ -1918,24 +1918,28 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 		}
 
 		struct core_mmu_table_info l2_table_info = { };
+		uint64_t * l2_table = NULL;
 		if(!l1_found) {
 			e = calloc(1, sizeof(struct core_mmu_map_l1_entry));
 			e->idx = r->va >> L1_XLAT_ADDRESS_SHIFT;
 			DMSG("l1 not found, allocating..: %p-%p", e->idx << L1_XLAT_ADDRESS_SHIFT, (e->idx + 1) << L1_XLAT_ADDRESS_SHIFT);
 
-			uint64_t * l2_table = calloc(1, PGT_SIZE);
-			core_mmu_set_info_table(&l2_table_info, 2, e->idx << L1_XLAT_ADDRESS_SHIFT, l2_table);
-			memset(l2_table_info.table, 0, PGT_SIZE);
+			l2_table = calloc(1, PGT_SIZE);
+			memset(l2_table, 0, PGT_SIZE);
 
-			e->table = virt_to_phys(l2_table_info.table) | 0x3; // TABLE_DESC;
+			e->table = virt_to_phys(l2_table) | 0x3; // TABLE_DESC;
 
 			TAILQ_INSERT_TAIL(&map->l1_entries, e, link);
+		} else {
+			l2_table = (uint64_t) phys_to_virt(e->table, MEM_AREA_TEE_RAM) & ~((uint64_t)0x3);
 		}
+		core_mmu_set_info_table(&l2_table_info, 2, e->idx << L1_XLAT_ADDRESS_SHIFT, l2_table);
 
 		struct core_mmu_table_info l3_table = { };
 		core_mmu_set_info_table(&l3_table, l2_table_info.level + 1, 0, NULL);
 	
-
+		DMSG("pg_info: level: %d - va_base: %p - shift: %d - num_entries: %d", l3_table.level, l3_table.va_base, l3_table.shift, l3_table.num_entries);
+		set_pg_region(l2_table, r, &pgt, &l3_table);
 
 
 		//set_pg_region(dir_info, r, &pgt, &pg_info);

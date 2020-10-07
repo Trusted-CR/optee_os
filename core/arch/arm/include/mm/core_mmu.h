@@ -315,6 +315,23 @@ struct core_mmu_user_map {
 	uint64_t user_map;
 	uint32_t asid;
 };
+
+struct core_mmu_map_l1_entry {
+	uint32_t idx;
+	uint64_t table;
+	TAILQ_ENTRY(core_mmu_map_l1_entry) link;
+};
+
+TAILQ_HEAD(core_mmu_map_l1_entries, core_mmu_map_l1_entry);
+
+struct core_mmu_map {
+	struct core_mmu_map_l1_entries l1_entries;
+	uint32_t asid;
+};
+
+
+
+
 #else
 /*
  * struct core_mmu_user_map - current user mapping register state
@@ -403,6 +420,9 @@ uint32_t core_mmu_type_to_attr(enum teecore_memtypes t);
  */
 void core_mmu_create_user_map(struct user_mode_ctx *uctx,
 			      struct core_mmu_user_map *map);
+
+void core_mmu_create_map(struct user_mode_ctx *uctx,
+			      struct core_mmu_map *map);
 /*
  * core_mmu_get_user_map() - Reads current MMU configuration for user VA space
  * @map:	MMU configuration for current user VA space.
@@ -415,6 +435,9 @@ void core_mmu_get_user_map(struct core_mmu_user_map *map);
  *		VA space to activate.
  */
 void core_mmu_set_user_map(struct core_mmu_user_map *map);
+
+
+void core_mmu_set_map(struct core_mmu_map *map);
 
 /*
  * struct core_mmu_table_info - Properties for a translation table

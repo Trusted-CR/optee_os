@@ -194,8 +194,6 @@ static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
 
 static TEE_Result alloc_pgt(struct user_mode_ctx *uctx)
 {
-	return alloc_pgt_new(uctx);
-
 	struct thread_specific_data *tsd __maybe_unused;
 	vaddr_t b;
 	vaddr_t e;
@@ -297,6 +295,81 @@ static TEE_Result umap_add_region(struct vm_info *vmi, struct vm_region *reg,
 	}
 
 	return TEE_ERROR_ACCESS_CONFLICT;
+}
+
+TEE_Result criu_vm_map_pad(struct user_mode_ctx *uctx, vaddr_t *va, size_t len,
+		      uint32_t prot, uint32_t flags, struct mobj *mobj,
+		      size_t offs, size_t pad_begin, size_t pad_end)
+{
+	TEE_Result res = TEE_SUCCESS;
+	struct vm_region *reg = NULL;
+	uint32_t attr = 0;
+
+	if (prot & ~TEE_MATTR_PROT_MASK)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	reg = calloc(1, sizeof(*reg));
+	if (!reg)
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+	if (!mobj_is_paged(mobj)) {
+		uint32_t cattr;
+
+		res = mobj_get_cattr(mobj, &cattr);
+		if (res)
+			goto err_free_reg;
+		attr |= cattr << TEE_MATTR_CACHE_SHIFT;
+	}
+	attr |= TEE_MATTR_VALID_BLOCK;
+	if (mobj_is_secure(mobj))
+		attr |= TEE_MATTR_SECURE;
+
+	reg->mobj = mobj_get(mobj);
+	reg->offset = offs;
+	reg->va = *va;
+	reg->size = ROUNDUP(len, SMALL_PAGE_SIZE);
+	reg->attr = attr | prot;
+	reg->flags = flags;
+
+	res = umap_add_region(&uctx->vm_info, reg, pad_begin, pad_end);
+	if (res)
+		goto err_free_reg;
+
+	res = alloc_pgt_new(uctx);
+	if (res)
+		goto err_rem_reg;
+
+	if (mobj_is_paged(mobj)) {
+		struct fobj *fobj = mobj_get_fobj(mobj);
+
+		if (!fobj) {
+			res = TEE_ERROR_GENERIC;
+			goto err_rem_reg;
+		}
+
+		res = tee_pager_add_um_area(uctx, reg->va, fobj, prot);
+		fobj_put(fobj);
+		if (res)
+			goto err_rem_reg;
+	}
+
+	/*
+	 * If the context currently is active set it again to update
+	 * the mapping.
+	 */
+	if (thread_get_tsd()->ctx == &uctx->ctx)
+		criu_tee_mmu_set_ctx(&uctx->ctx);
+
+	*va = reg->va;
+
+	return TEE_SUCCESS;
+
+err_rem_reg:
+	TAILQ_REMOVE(&uctx->vm_info.regions, reg, link);
+err_free_reg:
+	mobj_put(reg->mobj);
+	free(reg);
+	return res;
 }
 
 TEE_Result vm_map_pad(struct user_mode_ctx *uctx, vaddr_t *va, size_t len,
@@ -1303,6 +1376,37 @@ TEE_Result tee_mmu_check_access_rights(const struct user_mode_ctx *uctx,
 	}
 
 	return TEE_SUCCESS;
+}
+
+void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
+{
+	struct thread_specific_data *tsd = thread_get_tsd();
+
+	core_mmu_set_user_map(NULL);
+	/*
+	 * No matter what happens below, the current user TA will not be
+	 * current any longer. Make sure pager is in sync with that.
+	 * This function has to be called before there's a chance that
+	 * pgt_free_unlocked() is called.
+	 *
+	 * Save translation tables in a cache if it's a user TA.
+	 */
+	pgt_free(&tsd->pgt_cache, is_user_ta_ctx(tsd->ctx));
+
+	if (is_user_mode_ctx(ctx)) {
+		struct core_mmu_user_map map = { };
+		struct user_mode_ctx *uctx = to_user_mode_ctx(ctx);
+
+		core_mmu_create_user_map(uctx, &map);
+		core_mmu_set_user_map(&map);
+
+		// struct core_mmu_map mapp = { };
+
+		// core_mmu_create_map(uctx, &mapp);
+		// core_mmu_set_map(&mapp);
+		// tee_pager_assign_um_tables(uctx);
+	}
+	tsd->ctx = ctx;
 }
 
 void tee_mmu_set_ctx(struct tee_ta_ctx *ctx)

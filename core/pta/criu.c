@@ -117,11 +117,12 @@ static TEE_Result load_checkpoint_data() {
 	s->ctx = &utc->uctx.ctx;
 
 	tee_ta_push_current_session(s);
-	vaddr_t stack_addr = 0;
-	vaddr_t code_addr = 0;
+	vaddr_t stack_addr = 0x40000000;
+	vaddr_t code_addr = 0x40001000;
 
 	utc->is_32bit = false;
 
+	DMSG("CRIU - ALLOC stack: %p", stack_addr);
 	res = criu_alloc_and_map_ldelf_fobj(utc, 4096,
 				       TEE_MATTR_URW | TEE_MATTR_PRW,
 				       &stack_addr);
@@ -135,7 +136,7 @@ static TEE_Result load_checkpoint_data() {
 		return res;
 	utc->entry_func = code_addr + 0;
 
-	tee_mmu_set_ctx(&utc->uctx.ctx);
+	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
 	memcpy((void *)code_addr, binary_data, sizeof(binary_data));	
 
@@ -154,7 +155,7 @@ static TEE_Result load_checkpoint_data() {
 	condvar_init(&utc->uctx.ctx.busy_cv);
 	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->uctx.ctx, link);
 
-	tee_mmu_set_ctx(NULL);
+	criu_tee_mmu_set_ctx(NULL);
 
 	user_mode_ctx_print_mappings(&utc->uctx);
 

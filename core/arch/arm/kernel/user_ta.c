@@ -678,7 +678,7 @@ TEE_Result criu_alloc_and_map_ldelf_fobj(struct user_ta_ctx *utc, size_t sz,
 		return TEE_ERROR_OUT_OF_MEMORY;
 
 	// Map the virtual memory areas 
-	res = vm_map(&utc->uctx, va, num_pgs * SMALL_PAGE_SIZE,
+	res = criu_vm_map(&utc->uctx, va, num_pgs * SMALL_PAGE_SIZE,
 		     prot, VM_FLAG_LDELF, mobj, 0);
 	mobj_put(mobj);
 
