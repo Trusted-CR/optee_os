@@ -1394,17 +1394,12 @@ void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 	pgt_free(&tsd->pgt_cache, is_user_ta_ctx(tsd->ctx));
 
 	if (is_user_mode_ctx(ctx)) {
-		struct core_mmu_user_map map = { };
+		struct core_mmu_map map = { };
 		struct user_mode_ctx *uctx = to_user_mode_ctx(ctx);
 
-		core_mmu_create_user_map(uctx, &map);
-		core_mmu_set_user_map(&map);
-
-		// struct core_mmu_map mapp = { };
-
-		// core_mmu_create_map(uctx, &mapp);
-		// core_mmu_set_map(&mapp);
-		// tee_pager_assign_um_tables(uctx);
+		core_mmu_create_map(uctx, &map);
+		core_mmu_set_map(&map);
+		tee_pager_assign_um_tables(uctx);
 	}
 	tsd->ctx = ctx;
 }
