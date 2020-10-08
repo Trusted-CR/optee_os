@@ -66,6 +66,9 @@ TEE_Result vm_get_flags(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
 TEE_Result vm_set_prot(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
 		       uint32_t prot);
 
+TEE_Result criu_vm_set_prot(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
+		       uint32_t prot);
+
 TEE_Result vm_unmap(struct user_mode_ctx *uctx, vaddr_t va, size_t len);
 
 /*
@@ -131,6 +134,7 @@ TEE_Result tee_mmu_check_access_rights(const struct user_mode_ctx *uctx,
  *---------------------------------------------------------------------------*/
 void tee_mmu_set_ctx(struct tee_ta_ctx *ctx);
 void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx);
+void criu_tee_mmu_clear_ctx(struct tee_ta_ctx *ctx);
 struct tee_ta_ctx *tee_mmu_get_ctx(void);
 
 /* init some allocation pools */

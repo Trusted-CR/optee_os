@@ -13,6 +13,8 @@
 // Stolen from arch_svc_private.h
 typedef void (*syscall_t)(void);
 
+extern void dump_xlat_table(vaddr_t va, int level);
+
 #define TA_NAME		"criu.ta"
 
 #define CRIU_UUID \
@@ -104,6 +106,13 @@ static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * 
 	free(s);
 }
 
+static void dump_mmu_tables(struct core_mmu_map * map) {
+	struct core_mmu_map_l1_entry * e = NULL;
+	TAILQ_FOREACH(e, &map->l1_entries, link) {
+		dump_xlat_table(e->idx << 30, 2);
+	}
+}
+
 static TEE_Result load_checkpoint_data() {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
@@ -125,8 +134,8 @@ static TEE_Result load_checkpoint_data() {
 	s->ctx = &utc->uctx.ctx;
 
 	tee_ta_push_current_session(s);
-	vaddr_t stack_addr = 0x40001000;
-	vaddr_t code_addr = 0x40202000;
+	vaddr_t stack_addr = 0x7fd2f41000;
+	vaddr_t code_addr = 0x40050000;
 
 	utc->is_32bit = false;
 
@@ -150,6 +159,9 @@ static TEE_Result load_checkpoint_data() {
 	DMSG("CRIU - SET CTX!");
 	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
+	dump_mmu_tables(&utc->uctx.map);
+
+	DMSG("\n\nCRIU - DATA COPY START!");
 	memcpy((void *)code_addr, binary_data, sizeof(binary_data));	
 
 	DMSG("CRIU - DATA COPIED OVER!\n\n");
@@ -161,20 +173,22 @@ static TEE_Result load_checkpoint_data() {
 	if (res)
 		return res;
 
-	DMSG("MY BINARY LOAD ADDRESS %#"PRIxVA, code_addr);
+	dump_mmu_tables(&utc->uctx.map);
 
+	DMSG("CRIU - PROTECTION BITS SET\n\n");
 
-	tee_ta_pop_current_session();
+	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, code_addr);
 
 	utc->uctx.ctx.ref_count = 1;
 	condvar_init(&utc->uctx.ctx.busy_cv);
 	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->uctx.ctx, link);
 
-	criu_tee_mmu_clear_ctx(&utc->uctx.ctx);
+	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
 	user_mode_ctx_print_mappings(&utc->uctx);
 
-	tee_ta_push_current_session(s);
+	DMSG("\n\nCRIU - RUN!");
+	// tee_ta_push_current_session(s);
 	jump_to_user_mode(code_addr, utc->ldelf_stack_ptr);
 	tee_ta_pop_current_session();
 

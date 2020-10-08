@@ -1898,20 +1898,25 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 
 	struct pgt_cache *pgt_cache = &thread_get_tsd()->pgt_cache;
 	struct pgt *pgt = NULL;
+	int i = 0;
+	pgt_alloc_regions(pgt_cache, &uctx->vm_info, uctx);
+	pgt = SLIST_FIRST(pgt_cache);
 
-	// pgt_alloc_regions(pgt_cache, &uctx->vm_info, uctx);
-	// pgt = SLIST_FIRST(pgt_cache);
-
-#define L1_XLAT_ADDRESS_SHIFT 30
+#define L1_XLAT_ADDRESS_SHIFT  	30
+#define TABLE_DESC 				0x3
 
 	// Loop through all VM regions
 	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
+#ifdef DEBUG_CRIU_TABLES
 		DMSG("AREA: %p-%p - %d", r->va, r->va + r->size, r->va >> L1_XLAT_ADDRESS_SHIFT);
+#endif
 		bool l1_found = false;
 
 		TAILQ_FOREACH(e, &map->l1_entries, link) {
 			if(e->idx == (r->va >> L1_XLAT_ADDRESS_SHIFT)) {
+#ifdef DEBUG_CRIU_TABLES
 				DMSG("l1 found!: %d", e->idx);
+#endif
 				l1_found = true;
 				break;
 			}
@@ -1922,53 +1927,33 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 		if(!l1_found) {
 			e = calloc(1, sizeof(struct core_mmu_map_l1_entry));
 			e->idx = r->va >> L1_XLAT_ADDRESS_SHIFT;
-			DMSG("l1 not found, allocating..: %p-%p", e->idx << L1_XLAT_ADDRESS_SHIFT, (e->idx + 1) << L1_XLAT_ADDRESS_SHIFT);
+#ifdef DEBUG_CRIU_TABLES
+			DMSG("l1 not found, allocating..: %p-%p", (uint64_t) e->idx << L1_XLAT_ADDRESS_SHIFT, (uint64_t) (e->idx + 1) << L1_XLAT_ADDRESS_SHIFT);
+#endif
 
-			l2_table = calloc(1, PGT_SIZE);
+			// TODO: Dynamic allocation would be even better, but it has to be aligned.
+			// l2_table = calloc(1, PGT_SIZE);   <-- this is still unaligned
+			l2_table = get_l2_table(i++); 
 			memset(l2_table, 0, PGT_SIZE);
 
-			e->table = virt_to_phys(l2_table) | 0x3; // TABLE_DESC;
+			e->table = virt_to_phys(l2_table) | TABLE_DESC; // TABLE_DESC;
 
 			TAILQ_INSERT_TAIL(&map->l1_entries, e, link);
 		} else {
-			l2_table = (uint64_t) phys_to_virt(e->table, MEM_AREA_TEE_RAM) & ~((uint64_t)0x3);
+			l2_table = (uint64_t) phys_to_virt(e->table, MEM_AREA_TEE_RAM) & ~((uint64_t)TABLE_DESC);
 		}
-		core_mmu_set_info_table(&l2_table_info, 2, e->idx << L1_XLAT_ADDRESS_SHIFT, l2_table);
+		core_mmu_set_info_table(&l2_table_info, 2, (uint64_t) e->idx << L1_XLAT_ADDRESS_SHIFT, l2_table);
 
 		struct core_mmu_table_info l3_table = { };
 		core_mmu_set_info_table(&l3_table, l2_table_info.level + 1, 0, NULL);
-		
+#ifdef DEBUG_CRIU_TABLES
 		DMSG("l2_table_info: level: %d - va_base: %p - shift: %d - num_entries: %d", l2_table_info.level, l2_table_info.va_base, l2_table_info.shift, l2_table_info.num_entries);
+#endif
 		set_pg_region(&l2_table_info, r, &pgt, &l3_table);
 
 
 		//set_pg_region(dir_info, r, &pgt, &pg_info);
 	}
-}
-
-void core_mmu_populate_user_map_new(struct core_mmu_table_info *dir_info,
-				struct user_mode_ctx *uctx)
-{
-	struct core_mmu_table_info pg_info = { };
-	struct pgt_cache *pgt_cache = &thread_get_tsd()->pgt_cache;
-	struct pgt *pgt = NULL;
-
-	vaddr_t b;
-	vaddr_t e;
-	struct vm_region *r;
-
-	// pgt_free(pgt_cache, false);
-
-	/*
-	* Allocate all page tables in advance.
-	*/
-	pgt_alloc_regions(pgt_cache, &uctx->vm_info, uctx);
-	pgt = SLIST_FIRST(pgt_cache);
-
-	core_mmu_set_info_table(&pg_info, dir_info->level + 1, 0, NULL);
-
-	TAILQ_FOREACH(r, &uctx->vm_info.regions, link)
-		set_pg_region(dir_info, r, &pgt, &pg_info);
 }
 
 bool core_mmu_add_mapping(enum teecore_memtypes type, paddr_t addr, size_t len)

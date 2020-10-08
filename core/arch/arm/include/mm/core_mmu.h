@@ -354,6 +354,8 @@ static inline bool __noprof core_mmu_user_va_range_is_defined(void)
  */
 struct mmu_partition;
 
+void * get_l2_table(int i);
+
 /*
  * core_mmu_get_user_va_range() - Return range of user va space
  * @base:	Lowest user virtual address
@@ -422,6 +424,7 @@ void core_mmu_set_user_map(struct core_mmu_user_map *map);
 
 
 void core_mmu_set_map(struct core_mmu_map *map);
+void core_mmu_clear_map(struct core_mmu_map *map);
 
 /*
  * struct core_mmu_table_info - Properties for a translation table

@@ -357,8 +357,8 @@ TEE_Result criu_vm_map_pad(struct user_mode_ctx *uctx, vaddr_t *va, size_t len,
 	 * If the context currently is active set it again to update
 	 * the mapping.
 	 */
-	if (thread_get_tsd()->ctx == &uctx->ctx)
-		criu_tee_mmu_set_ctx(&uctx->ctx);
+	// if (thread_get_tsd()->ctx == &uctx->ctx)
+		// criu_tee_mmu_set_ctx(&uctx->ctx);
 
 	*va = reg->va;
 
@@ -772,6 +772,63 @@ TEE_Result vm_get_flags(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	*flags = r->flags;
+
+	return TEE_SUCCESS;
+}
+
+TEE_Result criu_vm_set_prot(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
+		       uint32_t prot)
+{
+	TEE_Result res = TEE_SUCCESS;
+	struct vm_region *r0 = NULL;
+	struct vm_region *r = NULL;
+	bool was_writeable = false;
+	bool need_sync = false;
+
+	assert(thread_get_tsd()->ctx == &uctx->ctx);
+
+	if (prot & ~TEE_MATTR_PROT_MASK || !len)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	res = split_vm_range(uctx, va, len, NULL, &r0);
+	if (res)
+		return res;
+
+	for (r = r0; r; r = TAILQ_NEXT(r, link)) {
+		if (r->va + r->size > va + len)
+			break;
+		if (r->attr & (TEE_MATTR_UW | TEE_MATTR_PW))
+			was_writeable = true;
+
+		if (!mobj_is_paged(r->mobj))
+			need_sync = true;
+
+		r->attr &= ~TEE_MATTR_PROT_MASK;
+		r->attr |= prot;
+	}
+
+	if (need_sync) {
+		/* Synchronize changes to translation tables */
+		criu_tee_mmu_set_ctx(&uctx->ctx);
+	}
+
+	for (r = r0; r; r = TAILQ_NEXT(r, link)) {
+		if (r->va + r->size > va + len)
+			break;
+		if (mobj_is_paged(r->mobj)) {
+			if (!tee_pager_set_um_area_attr(uctx, r->va, r->size,
+							prot))
+				panic();
+		} else if (was_writeable) {
+			cache_op_inner(DCACHE_AREA_CLEAN, (void *)r->va,
+				       r->size);
+		}
+
+	}
+	if (need_sync && was_writeable)
+		cache_op_inner(ICACHE_INVALIDATE, NULL, 0);
+
+	merge_vm_range(uctx, va, len);
 
 	return TEE_SUCCESS;
 }
@@ -1378,6 +1435,20 @@ TEE_Result tee_mmu_check_access_rights(const struct user_mode_ctx *uctx,
 	return TEE_SUCCESS;
 }
 
+void criu_tee_mmu_clear_ctx(struct tee_ta_ctx *ctx)
+{
+	struct thread_specific_data *tsd = thread_get_tsd();
+	pgt_free(&tsd->pgt_cache, is_user_ta_ctx(tsd->ctx));
+
+	if (is_user_mode_ctx(ctx)) {
+		struct user_mode_ctx *uctx = to_user_mode_ctx(ctx);
+		
+		core_mmu_clear_map(&uctx->map);
+	}
+
+	tsd->ctx = NULL;
+}
+
 void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 {
 	struct thread_specific_data *tsd = thread_get_tsd();
@@ -1394,11 +1465,12 @@ void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 	pgt_free(&tsd->pgt_cache, is_user_ta_ctx(tsd->ctx));
 
 	if (is_user_mode_ctx(ctx)) {
-		struct core_mmu_map map = { };
 		struct user_mode_ctx *uctx = to_user_mode_ctx(ctx);
+		
+		core_mmu_clear_map(&uctx->map);
 
-		core_mmu_create_map(uctx, &map);
-		core_mmu_set_map(&map);
+		core_mmu_create_map(uctx, &uctx->map);
+		core_mmu_set_map(&uctx->map);
 		tee_pager_assign_um_tables(uctx);
 	}
 	tsd->ctx = ctx;

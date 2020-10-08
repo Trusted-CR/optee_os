@@ -626,6 +626,10 @@ void core_mmu_set_info_table(struct core_mmu_table_info *tbl_info,
 		tbl_info->num_entries = XLAT_TABLE_ENTRIES;
 }
 
+void * get_l2_table(int i) {
+	return get_prtn()->l2_ta_tables[i];
+}
+
 void core_mmu_get_user_pgdir(struct core_mmu_table_info *pgd_info)
 {
 	vaddr_t va_range_base;
@@ -654,7 +658,7 @@ void core_mmu_create_user_map(struct user_mode_ctx *uctx,
 	core_mmu_get_user_pgdir(&dir_info);
 	memset(dir_info.table, 0, PGT_SIZE);
 	core_mmu_populate_user_map(&dir_info, uctx);
-	// core_mmu_populate_user_map_new(&dir_info, uctx);
+	
 	map->user_map = virt_to_phys(dir_info.table) | TABLE_DESC;
 	map->asid = uctx->vm_info.asid;
 }
@@ -937,17 +941,11 @@ void core_mmu_get_user_map(struct core_mmu_user_map *map)
 	}
 }
 
-void core_mmu_set_map(struct core_mmu_map *map) {
-	struct core_mmu_map_l1_entry * l1_entry = NULL;
-	// TAILQ_FOREACH(l1_entry, &map->l1_entries, link) {
-	// 	DMSG("l1_entry: %d", l1_entry->idx);
-	// }
-
-	// return;
-
+void core_mmu_clear_map(struct core_mmu_map *map) {
 	uint64_t ttbr;
 	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
 	struct mmu_partition *prtn = get_prtn();
+	struct core_mmu_map_l1_entry * l1_entry = NULL;
 
 	ttbr = read_ttbr0_el1();
 	/* Clear ASID */
@@ -958,24 +956,45 @@ void core_mmu_set_map(struct core_mmu_map *map) {
 	/* Set the new map */
 	if (map && &map->l1_entries) {
 		TAILQ_FOREACH(l1_entry, &map->l1_entries, link) {
-			// prtn->l1_tables[0][get_core_pos()][l1_entry->idx] =
-				// l1_entry->table;
+			prtn->l1_tables[0][get_core_pos()][l1_entry->idx] = 0;
+#ifdef DEBUG_CRIU_TABLES
+			DMSG("prtn->l1_tables[0][%d][%d] = 0", get_core_pos(), l1_entry->idx);
+#endif
+		}
+	}
+
+	tlbi_all();
+	icache_inv_all();
+
+	thread_unmask_exceptions(exceptions);
+}
+
+void core_mmu_set_map(struct core_mmu_map *map) {
+	uint64_t ttbr;
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
+	struct mmu_partition *prtn = get_prtn();
+	struct core_mmu_map_l1_entry * l1_entry = NULL;
+
+	ttbr = read_ttbr0_el1();
+	/* Clear ASID */
+	ttbr &= ~((uint64_t)TTBR_ASID_MASK << TTBR_ASID_SHIFT);
+	write_ttbr0_el1(ttbr);
+	isb();
+
+	/* Set the new map */
+	if (map && &map->l1_entries) {
+		TAILQ_FOREACH(l1_entry, &map->l1_entries, link) {
+			prtn->l1_tables[0][get_core_pos()][l1_entry->idx] =
+				l1_entry->table;
+#ifdef DEBUG_CRIU_TABLES
 			DMSG("prtn->l1_tables[0][%d][%d] = %p", get_core_pos(), l1_entry->idx, l1_entry->table);
+#endif
 		}
 		
 		dsb();	/* Make sure the write above is visible */
 		ttbr |= ((uint64_t)map->asid << TTBR_ASID_SHIFT);
 		write_ttbr0_el1(ttbr);
 		isb();
-	} else {
-		// TODO: CHANGE THIS
-
-		TAILQ_FOREACH(l1_entry, &map->l1_entries, link) {
-			// prtn->l1_tables[0][get_core_pos()][l1_entry->idx] = 0;
-			DMSG("prtn->l1_tables[0][%d][%d] = 0", get_core_pos(), l1_entry->idx);
-		}
-		
-		dsb();	/* Make sure the write above is visible */
 	}
 
 	tlbi_all();
