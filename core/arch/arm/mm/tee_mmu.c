@@ -165,6 +165,9 @@ static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
 	size_t ntbl = 0;
 	struct vm_region *r;
 
+	// TODO: This calculation is wrong, it does not take into consideration that there can be multiple regions
+	// that are in the same pagetable. For now this function at least returns the maximum possible number of pgts
+	// required. Fix later
 	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
 		size_t t = get_num_req_pgts_new(r, &b, &e);
 		ntbl += t;

@@ -1905,6 +1905,8 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 #define L1_XLAT_ADDRESS_SHIFT  	30
 #define TABLE_DESC 				0x3
 
+	struct core_mmu_table_info l3_table = { };
+		
 	// Loop through all VM regions
 	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
 #ifdef DEBUG_CRIU_TABLES
@@ -1939,13 +1941,14 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 			e->table = virt_to_phys(l2_table) | TABLE_DESC; // TABLE_DESC;
 
 			TAILQ_INSERT_TAIL(&map->l1_entries, e, link);
+			l3_table.table = NULL;
+			l3_table.va_base = 0;
 		} else {
 			l2_table = (uint64_t) phys_to_virt(e->table, MEM_AREA_TEE_RAM) & ~((uint64_t)TABLE_DESC);
 		}
 		core_mmu_set_info_table(&l2_table_info, 2, (uint64_t) e->idx << L1_XLAT_ADDRESS_SHIFT, l2_table);
 
-		struct core_mmu_table_info l3_table = { };
-		core_mmu_set_info_table(&l3_table, l2_table_info.level + 1, 0, NULL);
+		core_mmu_set_info_table(&l3_table, l2_table_info.level + 1, l3_table.va_base, l3_table.table);
 #ifdef DEBUG_CRIU_TABLES
 		DMSG("l2_table_info: level: %d - va_base: %p - shift: %d - num_entries: %d", l2_table_info.level, l2_table_info.va_base, l2_table_info.shift, l2_table_info.num_entries);
 #endif
