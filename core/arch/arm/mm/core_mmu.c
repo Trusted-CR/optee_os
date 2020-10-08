@@ -1918,7 +1918,7 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 		}
 
 		struct core_mmu_table_info l2_table_info = { };
-		uint64_t * l2_table = NULL;
+		void * l2_table = NULL;
 		if(!l1_found) {
 			e = calloc(1, sizeof(struct core_mmu_map_l1_entry));
 			e->idx = r->va >> L1_XLAT_ADDRESS_SHIFT;
@@ -1937,9 +1937,9 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 
 		struct core_mmu_table_info l3_table = { };
 		core_mmu_set_info_table(&l3_table, l2_table_info.level + 1, 0, NULL);
-	
-		DMSG("pg_info: level: %d - va_base: %p - shift: %d - num_entries: %d", l3_table.level, l3_table.va_base, l3_table.shift, l3_table.num_entries);
-		set_pg_region(l2_table, r, &pgt, &l3_table);
+		
+		DMSG("l2_table_info: level: %d - va_base: %p - shift: %d - num_entries: %d", l2_table_info.level, l2_table_info.va_base, l2_table_info.shift, l2_table_info.num_entries);
+		set_pg_region(&l2_table_info, r, &pgt, &l3_table);
 
 
 		//set_pg_region(dir_info, r, &pgt, &pg_info);

@@ -316,22 +316,6 @@ struct core_mmu_user_map {
 	uint32_t asid;
 };
 
-struct core_mmu_map_l1_entry {
-	uint32_t idx;
-	uint64_t table;
-	TAILQ_ENTRY(core_mmu_map_l1_entry) link;
-};
-
-TAILQ_HEAD(core_mmu_map_l1_entries, core_mmu_map_l1_entry);
-
-struct core_mmu_map {
-	struct core_mmu_map_l1_entries l1_entries;
-	uint32_t asid;
-};
-
-
-
-
 #else
 /*
  * struct core_mmu_user_map - current user mapping register state

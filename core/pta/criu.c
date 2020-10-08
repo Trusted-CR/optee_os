@@ -54,6 +54,7 @@ static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 		return TEE_ERROR_OUT_OF_MEMORY;
 
 	utc->uctx.ctx.initializing = true;
+	utc->uctx.is_criu_checkpoint = true;
 	utc->is_initializing = true;
 	TAILQ_INIT(&utc->open_sessions);
 	TAILQ_INIT(&utc->cryp_states);
@@ -89,6 +90,13 @@ static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp) {
 
 static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * utc) {
 	// Delete the user TA again
+	struct core_mmu_map_l1_entry * e = NULL;
+	TAILQ_FOREACH_REVERSE(e, &utc->uctx.map.l1_entries, core_mmu_map_l1_entries, link) {
+		DMSG("Entry: idx: %d - table: %p", e->idx, e->table);
+		TAILQ_REMOVE(&utc->uctx.map.l1_entries, e, link);
+		free(e);
+	}
+
 	condvar_destroy(&utc->uctx.ctx.busy_cv);
 	pgt_flush_ctx(&utc->uctx.ctx);
 	TAILQ_REMOVE(&tee_ctxes, &utc->uctx.ctx, link);
@@ -117,12 +125,12 @@ static TEE_Result load_checkpoint_data() {
 	s->ctx = &utc->uctx.ctx;
 
 	tee_ta_push_current_session(s);
-	vaddr_t stack_addr = 0x40000000;
-	vaddr_t code_addr = 0x40001000;
+	vaddr_t stack_addr = 0x40001000;
+	vaddr_t code_addr = 0x40202000;
 
 	utc->is_32bit = false;
 
-	DMSG("CRIU - ALLOC stack: %p", stack_addr);
+	DMSG("\n\nCRIU - ALLOC stack: %p", stack_addr);
 	res = criu_alloc_and_map_ldelf_fobj(utc, 4096,
 				       TEE_MATTR_URW | TEE_MATTR_PRW,
 				       &stack_addr);
@@ -130,17 +138,24 @@ static TEE_Result load_checkpoint_data() {
 		return res;
 	utc->ldelf_stack_ptr = stack_addr + 4096;
 
+	DMSG("\n\nCRIU - ALLOC code: %p", code_addr);
 	res = criu_alloc_and_map_ldelf_fobj(utc, 4096, TEE_MATTR_PRW,
 				       &code_addr);
 	if (res)
 		return res;
 	utc->entry_func = code_addr + 0;
 
+	DMSG("\n\nCRIU - ALLOCATION COMPLETED!");
+
+	DMSG("CRIU - SET CTX!");
 	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
 	memcpy((void *)code_addr, binary_data, sizeof(binary_data));	
 
-	res = vm_set_prot(&utc->uctx, code_addr,
+	DMSG("CRIU - DATA COPIED OVER!\n\n");
+
+	DMSG("\n\nCRIU - SET PROTECTION BITS");
+	res = criu_vm_set_prot(&utc->uctx, code_addr,
 			  ROUNDUP(sizeof(binary_data), SMALL_PAGE_SIZE),
 			  TEE_MATTR_URX);
 	if (res)
@@ -155,7 +170,7 @@ static TEE_Result load_checkpoint_data() {
 	condvar_init(&utc->uctx.ctx.busy_cv);
 	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->uctx.ctx, link);
 
-	criu_tee_mmu_set_ctx(NULL);
+	criu_tee_mmu_clear_ctx(&utc->uctx.ctx);
 
 	user_mode_ctx_print_mappings(&utc->uctx);
 

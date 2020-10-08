@@ -17,6 +17,8 @@ struct user_mode_ctx {
 	struct thread_user_vfp_state vfp;
 #endif
 	struct tee_ta_ctx ctx;
+	struct core_mmu_map map;
+	bool is_criu_checkpoint;
 };
 #endif /*__KERNEL_USER_MODE_CTX_STRUCT_H*/
 

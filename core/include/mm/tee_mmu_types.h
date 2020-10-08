@@ -89,6 +89,19 @@ struct vm_info {
 	unsigned int asid;
 };
 
+struct core_mmu_map_l1_entry {
+	uint32_t idx;
+	uint64_t table;
+	TAILQ_ENTRY(core_mmu_map_l1_entry) link;
+};
+
+TAILQ_HEAD(core_mmu_map_l1_entries, core_mmu_map_l1_entry);
+
+struct core_mmu_map {
+	struct core_mmu_map_l1_entries l1_entries;
+	uint32_t asid;
+};
+
 static inline void mattr_perm_to_str(char *str, size_t size, uint32_t attr)
 {
 	if (size < 7)
