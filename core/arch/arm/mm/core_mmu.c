@@ -740,7 +740,11 @@ static void dump_mmap_table(struct tee_mmap_region *memory_map)
 
 #if DEBUG_XLAT_TABLE
 
+#ifdef DEBUG_CRIU_TABLES
+void dump_xlat_table(vaddr_t va, int level)
+#else
 static void dump_xlat_table(vaddr_t va, int level)
+#endif
 {
 	struct core_mmu_table_info tbl_info;
 	unsigned int idx = 0;
@@ -774,9 +778,12 @@ static void dump_xlat_table(vaddr_t va, int level)
 					attr & TEE_MATTR_PX ? "X " : "XN",
 					attr & TEE_MATTR_SECURE ? " S" : "NS");
 			} else {
+#ifndef DEBUG_CRIU_TABLES
+// I only care about mappings that exist. This prevents printing a lot of unneeded information.
 				DMSG_RAW("%*s [LVL%d] VA:0x%010" PRIxVA
 					    " INVALID\n",
 					    level * 2, "", level, va);
+#endif
 			}
 		}
 		va += 1 << tbl_info.shift;
@@ -1564,6 +1571,11 @@ static void set_pg_region(struct core_mmu_table_info *dir_info,
 			idx = core_mmu_va2idx(dir_info, r.va);
 			pg_info->va_base = core_mmu_idx2va(dir_info, idx);
 
+#ifdef DEBUG_CRIU_TABLES
+			DMSG("dir_info: level: %d - va_base: %p - shift: %d - num_entries: %d", dir_info->level, dir_info->va_base, dir_info->shift, dir_info->num_entries);
+			DMSG("pg_info: level: %d - va_base: %p - shift: %d - num_entries: %d", pg_info->level, pg_info->va_base, pg_info->shift, pg_info->num_entries);
+			DMSG("r.va: %p - end: %p - IDX: %d", r.va, end, idx);
+#endif
 #ifdef CFG_PAGED_USER_TA
 			/*
 			 * Advance pgt to va_base, note that we may need to
@@ -1602,6 +1614,9 @@ static void set_pg_region(struct core_mmu_table_info *dir_info,
 			if (mobj_get_pa(region->mobj, offset, granule,
 					&r.pa) != TEE_SUCCESS)
 				panic("Failed to get PA of unpaged mobj");
+#ifdef DEBUG_CRIU_TABLES
+			DMSG("set_region: pg_info: %p - va: %p", pg_info->va_base, r.va);
+#endif
 			set_region(pg_info, &r);
 		}
 		r.va += r.size;

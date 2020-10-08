@@ -93,10 +93,12 @@ static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp) {
 static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * utc) {
 	// Delete the user TA again
 	struct core_mmu_map_l1_entry * e = NULL;
-	TAILQ_FOREACH_REVERSE(e, &utc->uctx.map.l1_entries, core_mmu_map_l1_entries, link) {
-		DMSG("Entry: idx: %d - table: %p", e->idx, e->table);
-		TAILQ_REMOVE(&utc->uctx.map.l1_entries, e, link);
-		free(e);
+	if(!TAILQ_EMPTY(&utc->uctx.map.l1_entries)) {
+		TAILQ_FOREACH_REVERSE(e, &utc->uctx.map.l1_entries, core_mmu_map_l1_entries, link) {
+			DMSG("Entry: idx: %d - table: %p", e->idx, e->table);
+			TAILQ_REMOVE(&utc->uctx.map.l1_entries, e, link);
+			free(e);
+		}
 	}
 
 	condvar_destroy(&utc->uctx.ctx.busy_cv);
@@ -188,7 +190,7 @@ static TEE_Result load_checkpoint_data() {
 	user_mode_ctx_print_mappings(&utc->uctx);
 
 	DMSG("\n\nCRIU - RUN!");
-	// tee_ta_push_current_session(s);
+	
 	jump_to_user_mode(code_addr, utc->ldelf_stack_ptr);
 	tee_ta_pop_current_session();
 
