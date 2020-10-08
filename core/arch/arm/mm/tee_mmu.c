@@ -1451,6 +1451,7 @@ void criu_tee_mmu_clear_ctx(struct tee_ta_ctx *ctx)
 
 void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 {
+	DMSG("CRIU_TEE_MMU_SET_CTX!");
 	struct thread_specific_data *tsd = thread_get_tsd();
 
 	core_mmu_set_user_map(NULL);
@@ -1478,6 +1479,7 @@ void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 
 void tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 {
+	DMSG("TEE_MMU_SET_CTX!");
 	struct thread_specific_data *tsd = thread_get_tsd();
 
 	core_mmu_set_user_map(NULL);
