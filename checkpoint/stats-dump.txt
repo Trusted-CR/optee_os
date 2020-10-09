@@ -1,0 +1,23 @@
+{
+    "magic": "STATS",
+    "entries": [
+        {
+            "dump": {
+                "freezing_time": 582,
+                "frozen_time": 140205,
+                "memdump_time": 2109,
+                "memwrite_time": 941,
+                "pages_scanned": 6874,
+                "pages_skipped_parent": 0,
+                "pages_written": 40,
+                "irmap_resolve": 0,
+                "pages_lazy": 0,
+                "page_pipes": 4,
+                "page_pipe_bufs": 4,
+                "shpages_scanned": 0,
+                "shpages_skipped_parent": 0,
+                "shpages_written": 0
+            }
+        }
+    ]
+}

@@ -1,0 +1,103 @@
+{
+    "magic": "PAGEMAP",
+    "entries": [
+        {
+            "pages_id": 1
+        },
+        {
+            "vaddr": "0x40050000",
+            "nr_pages": 1,
+            "flags": "PE_PRESENT"
+        },
+        {
+            "vaddr": "0x400e2000",
+            "nr_pages": 2,
+            "flags": "PE_PRESENT"
+        },
+        {
+            "vaddr": "0x400e5000",
+            "nr_pages": 4,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x400f0000",
+            "nr_pages": 8,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x402f6000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744ca00000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744ca67000",
+            "nr_pages": 2,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744ce00000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744ce03000",
+            "nr_pages": 2,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744ce08000",
+            "nr_pages": 2,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744d000000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744d002000",
+            "nr_pages": 6,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744d202000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744d243000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744d245000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744d247000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744e252000",
+            "nr_pages": 1,
+            "flags": "PE_LAZY | PE_PRESENT"
+        },
+        {
+            "vaddr": "0x744e257000",
+            "nr_pages": 1,
+            "flags": "PE_PRESENT"
+        },
+        {
+            "vaddr": "0x7ffca45000",
+            "nr_pages": 3,
+            "flags": "PE_LAZY | PE_PRESENT"
+        }
+    ]
+}

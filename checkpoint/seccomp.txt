@@ -1,0 +1,6 @@
+{
+    "magic": "SECCOMP",
+    "entries": [
+        {}
+    ]
+}

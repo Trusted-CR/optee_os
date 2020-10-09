@@ -1,0 +1,15 @@
+{
+    "magic": "TIMENS",
+    "entries": [
+        {
+            "monotonic": {
+                "tv_sec": 276,
+                "tv_nsec": 485152472
+            },
+            "boottime": {
+                "tv_sec": 276,
+                "tv_nsec": 485154972
+            }
+        }
+    ]
+}
