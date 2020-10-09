@@ -136,8 +136,9 @@ static TEE_Result load_checkpoint_data() {
 	s->ctx = &utc->uctx.ctx;
 
 	tee_ta_push_current_session(s);
-	vaddr_t stack_addr = 0x7fd2f41000;
+	vaddr_t stack_addr = 0x7fd2f40000;
 	vaddr_t code_addr = 0x40050000;
+	vaddr_t data_addr = 0x400de000;
 
 	utc->is_32bit = false;
 
@@ -159,6 +160,14 @@ static TEE_Result load_checkpoint_data() {
 		return res;
 	}
 	utc->entry_func = code_addr + 0;
+
+	DMSG("\n\nCRIU - ALLOC data: %p", data_addr);
+	res = criu_alloc_and_map_ldelf_fobj(utc, 4096, TEE_MATTR_PRW,
+				       &data_addr);
+	if (res) {
+		DMSG("CRIU - ALLOC data failed: %d", res);
+		return res;
+	}
 
 	DMSG("\n\nCRIU - ALLOCATION COMPLETED!");
 

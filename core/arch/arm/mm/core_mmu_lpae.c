@@ -193,6 +193,8 @@
 #define NUM_L1_TABLES	1
 #endif
 
+#define MAX_CRIU_L2_TABLES 8
+
 typedef uint64_t l1_xlat_tbls_t[CFG_TEE_CORE_NB_CORE][NUM_L1_ENTRIES];
 typedef uint64_t xlat_tbl_t[XLAT_TABLE_ENTRIES];
 
@@ -208,12 +210,17 @@ static xlat_tbl_t xlat_tables[MAX_XLAT_TABLES]
 static xlat_tbl_t xlat_tables_ul1[CFG_NUM_THREADS]
 	__aligned(XLAT_TABLE_SIZE) __section(".nozi.mmu.l2");
 
+/* MMU L2 table for restoring CRIU checkpoints */
+static xlat_tbl_t xlat_tables_criu[MAX_CRIU_L2_TABLES]
+	__aligned(XLAT_TABLE_SIZE) __section(".nozi.mmu.l2");
+
 static int user_va_idx __nex_data = -1;
 
 struct mmu_partition {
 	l1_xlat_tbls_t *l1_tables;
 	xlat_tbl_t *xlat_tables;
 	xlat_tbl_t *l2_ta_tables;
+	xlat_tbl_t *criu_l2_tables;
 	unsigned int xlat_tables_used;
 	unsigned int asid;
 };
@@ -222,6 +229,7 @@ static struct mmu_partition default_partition __nex_data = {
 	.l1_tables = l1_xlation_table,
 	.xlat_tables = xlat_tables,
 	.l2_ta_tables = xlat_tables_ul1,
+	.criu_l2_tables = xlat_tables_criu,
 	.xlat_tables_used = 0,
 	.asid = 0
 };
@@ -626,8 +634,11 @@ void core_mmu_set_info_table(struct core_mmu_table_info *tbl_info,
 		tbl_info->num_entries = XLAT_TABLE_ENTRIES;
 }
 
-void * get_l2_table(int i) {
-	return get_prtn()->l2_ta_tables[i];
+void * get_l2_table(int idx) {
+	assert(idx >= 0);
+	assert(idx < MAX_CRIU_L2_TABLES);
+	
+	return get_prtn()->criu_l2_tables[idx];
 }
 
 void core_mmu_get_user_pgdir(struct core_mmu_table_info *pgd_info)
