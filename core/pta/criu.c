@@ -145,15 +145,19 @@ static TEE_Result load_checkpoint_data() {
 	res = criu_alloc_and_map_ldelf_fobj(utc, 4096,
 				       TEE_MATTR_URW | TEE_MATTR_PRW,
 				       &stack_addr);
-	if (res)
+	if (res) {
+		DMSG("CRIU - ALLOC stack failed: %d", res);
 		return res;
+	}
 	utc->ldelf_stack_ptr = stack_addr + 4096;
 
 	DMSG("\n\nCRIU - ALLOC code: %p", code_addr);
 	res = criu_alloc_and_map_ldelf_fobj(utc, 4096, TEE_MATTR_PRW,
 				       &code_addr);
-	if (res)
+	if (res) {
+		DMSG("CRIU - ALLOC code failed: %d", res);
 		return res;
+	}
 	utc->entry_func = code_addr + 0;
 
 	DMSG("\n\nCRIU - ALLOCATION COMPLETED!");
@@ -161,7 +165,7 @@ static TEE_Result load_checkpoint_data() {
 	DMSG("CRIU - SET CTX!");
 	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
-	dump_mmu_tables(&utc->uctx.map);
+	// dump_mmu_tables(&utc->uctx.map);
 
 	DMSG("\n\nCRIU - DATA COPY START!");
 	memcpy((void *)code_addr, binary_data, sizeof(binary_data));	
@@ -172,10 +176,12 @@ static TEE_Result load_checkpoint_data() {
 	res = criu_vm_set_prot(&utc->uctx, code_addr,
 			  ROUNDUP(sizeof(binary_data), SMALL_PAGE_SIZE),
 			  TEE_MATTR_URX);
-	if (res)
+	if (res) {
+		DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
 		return res;
+	}
 
-	dump_mmu_tables(&utc->uctx.map);
+	// dump_mmu_tables(&utc->uctx.map);
 
 	DMSG("CRIU - PROTECTION BITS SET\n\n");
 
