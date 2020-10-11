@@ -95,7 +95,6 @@ static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * 
 	struct core_mmu_map_l1_entry * e = NULL;
 	if(!TAILQ_EMPTY(&utc->uctx.map.l1_entries)) {
 		TAILQ_FOREACH_REVERSE(e, &utc->uctx.map.l1_entries, core_mmu_map_l1_entries, link) {
-			DMSG("Entry: idx: %d - table: %p", e->idx, e->table);
 			TAILQ_REMOVE(&utc->uctx.map.l1_entries, e, link);
 			free(e);
 		}
@@ -137,8 +136,14 @@ static TEE_Result load_checkpoint_data() {
 
 	tee_ta_push_current_session(s);
 	vaddr_t stack_addr = 0x7fd2f40000;
-	vaddr_t code_addr = 0x40050000;
-	vaddr_t data_addr = 0x400de000;
+
+	vaddr_t code_addr_start = 0x40050000;
+	vaddr_t code_addr_end   = 0x400dd000;
+
+	vaddr_t data_addr_start = 0x400de000;
+	vaddr_t data_addr_end   = 0x400e4000;
+
+	vaddr_t entry_addr = 0x40050000;
 
 	utc->is_32bit = false;
 
@@ -152,18 +157,18 @@ static TEE_Result load_checkpoint_data() {
 	}
 	utc->ldelf_stack_ptr = stack_addr + 4096;
 
-	DMSG("\n\nCRIU - ALLOC code: %p", code_addr);
-	res = criu_alloc_and_map_ldelf_fobj(utc, 4096, TEE_MATTR_PRW,
-				       &code_addr);
+	DMSG("\n\nCRIU - ALLOC code: %p", code_addr_start);
+	res = criu_alloc_and_map_ldelf_fobj(utc, code_addr_end - code_addr_start, TEE_MATTR_PRW,
+				       &code_addr_start);
 	if (res) {
 		DMSG("CRIU - ALLOC code failed: %d", res);
 		return res;
 	}
-	utc->entry_func = code_addr + 0;
+	utc->entry_func = entry_addr;
 
-	DMSG("\n\nCRIU - ALLOC data: %p", data_addr);
-	res = criu_alloc_and_map_ldelf_fobj(utc, 4096, TEE_MATTR_PRW,
-				       &data_addr);
+	DMSG("\n\nCRIU - ALLOC data: %p", data_addr_start);
+	res = criu_alloc_and_map_ldelf_fobj(utc, data_addr_end - data_addr_start, TEE_MATTR_PRW,
+				       &data_addr_start);
 	if (res) {
 		DMSG("CRIU - ALLOC data failed: %d", res);
 		return res;
@@ -177,12 +182,12 @@ static TEE_Result load_checkpoint_data() {
 	// dump_mmu_tables(&utc->uctx.map);
 
 	DMSG("\n\nCRIU - DATA COPY START!");
-	memcpy((void *)code_addr, binary_data, sizeof(binary_data));	
+	memcpy((void *)code_addr_start, binary_data, sizeof(binary_data));	
 
 	DMSG("CRIU - DATA COPIED OVER!\n\n");
 
 	DMSG("\n\nCRIU - SET PROTECTION BITS");
-	res = criu_vm_set_prot(&utc->uctx, code_addr,
+	res = criu_vm_set_prot(&utc->uctx, code_addr_start,
 			  ROUNDUP(sizeof(binary_data), SMALL_PAGE_SIZE),
 			  TEE_MATTR_URX);
 	if (res) {
@@ -194,7 +199,7 @@ static TEE_Result load_checkpoint_data() {
 
 	DMSG("CRIU - PROTECTION BITS SET\n\n");
 
-	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, code_addr);
+	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, code_addr_start);
 
 	utc->uctx.ctx.ref_count = 1;
 	condvar_init(&utc->uctx.ctx.busy_cv);
@@ -204,9 +209,9 @@ static TEE_Result load_checkpoint_data() {
 
 	user_mode_ctx_print_mappings(&utc->uctx);
 
-	DMSG("\n\nCRIU - RUN!");
+	DMSG("\n\nCRIU - RUN! Entry address: %p", entry_addr);
 	
-	jump_to_user_mode(code_addr, utc->ldelf_stack_ptr);
+	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr);
 	tee_ta_pop_current_session();
 
 	cleanup_allocations(s, utc);
