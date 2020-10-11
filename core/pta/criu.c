@@ -108,7 +108,7 @@ static void dump_mmu_tables(struct core_mmu_map * map) {
 	}
 }
 
-static TEE_Result load_checkpoint_data(TEE_Param * param) {
+static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param * pageData) {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
 
@@ -128,16 +128,50 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 
 	s->ctx = &utc->uctx.ctx;
 
-	tee_ta_push_current_session(s);
-	vaddr_t stack_addr_start = 0x7ffca46000;
-	vaddr_t stack_addr_end   = 0x7ffca48000;
-	
+	tee_ta_push_current_session(s);	
 	vaddr_t allocated_area_start = 0x744d245000;
 	vaddr_t allocated_area_end   = 0x744d248000;
 
-	vaddr_t code_addr_start = 0x40050000;
-	vaddr_t code_addr_end   = 0x400dd000;
+	struct criu_vm_area {
+		vaddr_t vm_start;
+		vaddr_t vm_end;
+		void * original_data;
+		unsigned long offset;
+		uint32_t protection;
+	};
 
+	struct criu_vm_area code = {
+		.vm_start		= 0x40050000,
+		.vm_end			= 0x400dd000,
+		.original_data	= checkpointedBinary->memref.buffer,
+		.offset 		= 0,
+		.protection		= TEE_MATTR_PRW
+	};
+
+	struct criu_vm_area stack = {
+		.vm_start		= 0x7ffca46000,
+		.vm_end			= 0x7ffca48000,
+		.original_data	= 0,
+		.offset 		= 0,
+		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	};
+
+	struct criu_vm_area data0 = {
+		.vm_start		= 0x400e2000,
+		.vm_end			= 0x400e2000 + (4096 * 2),
+		.original_data	= pageData->memref.buffer,
+		.offset 		= (1 * 4096),
+		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	};
+
+	struct criu_vm_area data1 = {
+		.vm_start		= 0x400e5000,
+		.vm_end			= 0x400e5000 + (4096 * 5),
+		.original_data	= pageData->memref.buffer,
+		.offset 		= (3 * 4096),
+		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	};
+	
 	vaddr_t data_addr_start = 0x400de000;
 	vaddr_t data_addr_end   = 0x400e4000;
 
@@ -178,19 +212,19 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 
 	utc->is_32bit = false;
 
-	DMSG("\n\nCRIU - ALLOC stack: %p", stack_addr_start);
-	res = criu_alloc_and_map_ldelf_fobj(utc, stack_addr_end - stack_addr_start,
-				       TEE_MATTR_URW | TEE_MATTR_PRW,
-				       &stack_addr_start);
+	DMSG("\n\nCRIU - ALLOC stack: %p", stack.vm_start);
+	res = criu_alloc_and_map_ldelf_fobj(utc, stack.vm_end - stack.vm_start,
+				       stack.protection,
+				       &stack.vm_start);
 	if (res) {
 		DMSG("CRIU - ALLOC stack failed: %d", res);
 		return res;
 	}
-	utc->ldelf_stack_ptr = stack_addr_end;
+	utc->ldelf_stack_ptr = stack.vm_end;
 
-	DMSG("\n\nCRIU - ALLOC code: %p", code_addr_start);
-	res = criu_alloc_and_map_ldelf_fobj(utc, code_addr_end - code_addr_start, TEE_MATTR_PRW,
-				       &code_addr_start);
+	DMSG("\n\nCRIU - ALLOC code: %p", code.vm_start);
+	res = criu_alloc_and_map_ldelf_fobj(utc, code.vm_end - code.vm_start, code.protection,
+				       &code.vm_start);
 	if (res) {
 		DMSG("CRIU - ALLOC code failed: %d", res);
 		return res;
@@ -221,7 +255,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 	// dump_mmu_tables(&utc->uctx.map);
 
 	DMSG("\n\nCRIU - DATA COPY START!");
-	memcpy((void *)code_addr_start, param->memref.buffer, code_addr_end - code_addr_start);	
+	memcpy((void *)code.vm_start, code.original_data + code.offset, code.vm_end - code.vm_start);	
 
 	uint64_t * sleep_argument_stack_address = 0x7ffca46aa0;
 	*sleep_argument_stack_address = 1;
@@ -232,8 +266,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 
 
 	DMSG("\n\nCRIU - SET PROTECTION BITS");
-	res = criu_vm_set_prot(&utc->uctx, code_addr_start,
-			  ROUNDUP(code_addr_end - code_addr_start, SMALL_PAGE_SIZE),
+	res = criu_vm_set_prot(&utc->uctx, code.vm_start,
+			  ROUNDUP(code.vm_end - code.vm_start, SMALL_PAGE_SIZE),
 			  TEE_MATTR_URX);
 	if (res) {
 		DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
@@ -244,7 +278,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 
 	DMSG("CRIU - PROTECTION BITS SET\n\n");
 
-	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, code_addr_start);
+	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, code.vm_start);
 
 	utc->uctx.ctx.ref_count = 1;
 	condvar_init(&utc->uctx.ctx.busy_cv);
@@ -281,7 +315,7 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 	DMSG("Second argument contains: %s", params[0].memref.buffer);
 
 	// LOAD CHECKPOINT DATA
-	load_checkpoint_data(&params[0]);
+	load_checkpoint_data(&params[0], &params[1]);
 	char message[] = "hello from mitchell";
  
 	memcpy(params[0].memref.buffer, message, 
