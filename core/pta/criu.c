@@ -131,6 +131,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 	tee_ta_push_current_session(s);
 	vaddr_t stack_addr_start = 0x7ffca46000;
 	vaddr_t stack_addr_end   = 0x7ffca48000;
+	
+	vaddr_t allocated_area_start = 0x744d245000;
+	vaddr_t allocated_area_end   = 0x744d248000;
 
 	vaddr_t code_addr_start = 0x40050000;
 	vaddr_t code_addr_end   = 0x400dd000;
@@ -202,6 +205,14 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 		return res;
 	}
 
+	DMSG("\n\nCRIU - ALLOC another area: %p", allocated_area_start);
+	res = criu_alloc_and_map_ldelf_fobj(utc, allocated_area_end - allocated_area_start, TEE_MATTR_URW,
+				       &allocated_area_start);
+	if (res) {
+		DMSG("CRIU - ALLOC another area failed: %d", res);
+		return res;
+	}
+
 	DMSG("\n\nCRIU - ALLOCATION COMPLETED!");
 
 	DMSG("CRIU - SET CTX!");
@@ -212,10 +223,13 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 	DMSG("\n\nCRIU - DATA COPY START!");
 	memcpy((void *)code_addr_start, param->memref.buffer, code_addr_end - code_addr_start);	
 
-	DMSG("CRIU - DATA COPIED OVER!\n\n");
-
 	uint64_t * sleep_argument_stack_address = 0x7ffca46aa0;
 	*sleep_argument_stack_address = 1;
+
+	memset((void *)allocated_area_start, 0, allocated_area_end - allocated_area_start);
+
+	DMSG("CRIU - DATA COPIED OVER!\n\n");
+
 
 	DMSG("\n\nCRIU - SET PROTECTION BITS");
 	res = criu_vm_set_prot(&utc->uctx, code_addr_start,
@@ -255,14 +269,16 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 	DMSG("Load checkpoint");
 
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
-						TEE_PARAM_TYPE_NONE,
+						TEE_PARAM_TYPE_MEMREF_INOUT,
 						TEE_PARAM_TYPE_NONE,
 						TEE_PARAM_TYPE_NONE);
 
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	IMSG("Got data from NW, size: %d", params[0].memref.size);
+	IMSG("Got data from NW, size: %d and %d", params[0].memref.size, params[1].memref.size);
+
+	DMSG("Second argument contains: %s", params[0].memref.buffer);
 
 	// LOAD CHECKPOINT DATA
 	load_checkpoint_data(&params[0]);
