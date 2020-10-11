@@ -12,6 +12,7 @@
 #include <kernel/thread.h>
 #include <kernel/trace_ta.h>
 #include <kernel/user_ta.h>
+#include <kernel/delay.h>
 #include <mm/tee_mmu.h>
 #include <string.h>
 #include <speculation_barrier.h>
@@ -243,6 +244,14 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		DMSG("Too many arguments for SCN %zu (%zu)", scn, max_args);
 		set_svc_retval(regs, TEE_ERROR_GENERIC);
 		return true; /* return to user mode */
+	}
+	DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
+
+	if(scn == 101) {
+		DMSG("syscall nanosleep handled");
+		mdelay(3000); // Using 3 seconds now to see it really works
+		set_svc_retval(regs, 0);
+		return true;
 	}
 
 	if(scn == 93) {

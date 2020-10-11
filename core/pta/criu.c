@@ -114,7 +114,7 @@ static void dump_mmu_tables(struct core_mmu_map * map) {
 	}
 }
 
-static TEE_Result load_checkpoint_data() {
+static TEE_Result load_checkpoint_data(TEE_Param * param) {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
 
@@ -135,7 +135,8 @@ static TEE_Result load_checkpoint_data() {
 	s->ctx = &utc->uctx.ctx;
 
 	tee_ta_push_current_session(s);
-	vaddr_t stack_addr = 0x7fd2f40000;
+	vaddr_t stack_addr_start = 0x7ffca46000;
+	vaddr_t stack_addr_end   = 0x7ffca48000;
 
 	vaddr_t code_addr_start = 0x40050000;
 	vaddr_t code_addr_end   = 0x400dd000;
@@ -143,19 +144,19 @@ static TEE_Result load_checkpoint_data() {
 	vaddr_t data_addr_start = 0x400de000;
 	vaddr_t data_addr_end   = 0x400e4000;
 
-	vaddr_t entry_addr = 0x40050000;
+	vaddr_t entry_addr = 0x40053ea0;
 
 	utc->is_32bit = false;
 
-	DMSG("\n\nCRIU - ALLOC stack: %p", stack_addr);
-	res = criu_alloc_and_map_ldelf_fobj(utc, 4096,
+	DMSG("\n\nCRIU - ALLOC stack: %p", stack_addr_start);
+	res = criu_alloc_and_map_ldelf_fobj(utc, stack_addr_end - stack_addr_start,
 				       TEE_MATTR_URW | TEE_MATTR_PRW,
-				       &stack_addr);
+				       &stack_addr_start);
 	if (res) {
 		DMSG("CRIU - ALLOC stack failed: %d", res);
 		return res;
 	}
-	utc->ldelf_stack_ptr = stack_addr + 4096;
+	utc->ldelf_stack_ptr = stack_addr_end;
 
 	DMSG("\n\nCRIU - ALLOC code: %p", code_addr_start);
 	res = criu_alloc_and_map_ldelf_fobj(utc, code_addr_end - code_addr_start, TEE_MATTR_PRW,
@@ -167,7 +168,7 @@ static TEE_Result load_checkpoint_data() {
 	utc->entry_func = entry_addr;
 
 	DMSG("\n\nCRIU - ALLOC data: %p", data_addr_start);
-	res = criu_alloc_and_map_ldelf_fobj(utc, data_addr_end - data_addr_start, TEE_MATTR_PRW,
+	res = criu_alloc_and_map_ldelf_fobj(utc, data_addr_end - data_addr_start, TEE_MATTR_URW,
 				       &data_addr_start);
 	if (res) {
 		DMSG("CRIU - ALLOC data failed: %d", res);
@@ -182,13 +183,13 @@ static TEE_Result load_checkpoint_data() {
 	// dump_mmu_tables(&utc->uctx.map);
 
 	DMSG("\n\nCRIU - DATA COPY START!");
-	memcpy((void *)code_addr_start, binary_data, sizeof(binary_data));	
+	memcpy((void *)code_addr_start, param->memref.buffer, code_addr_end - code_addr_start);	
 
 	DMSG("CRIU - DATA COPIED OVER!\n\n");
 
 	DMSG("\n\nCRIU - SET PROTECTION BITS");
 	res = criu_vm_set_prot(&utc->uctx, code_addr_start,
-			  ROUNDUP(sizeof(binary_data), SMALL_PAGE_SIZE),
+			  ROUNDUP(code_addr_end - code_addr_start, SMALL_PAGE_SIZE),
 			  TEE_MATTR_URX);
 	if (res) {
 		DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
@@ -223,8 +224,25 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 			     TEE_Param params[TEE_NUM_PARAMS]) {
 	DMSG("Load checkpoint");
 
+	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
+						TEE_PARAM_TYPE_NONE,
+						TEE_PARAM_TYPE_NONE,
+						TEE_PARAM_TYPE_NONE);
+
+	if (param_types != exp_param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	IMSG("Got data from NW, size: %d", params[0].memref.size);
+
 	// LOAD CHECKPOINT DATA
-	load_checkpoint_data();
+	load_checkpoint_data(&params[0]);
+	char message[] = "hello from mitchell";
+ 
+	memcpy(params[0].memref.buffer, message, 
+			(params[0].memref.size >= sizeof(message) 
+			? sizeof(message) : params[0].memref.size));
+	
+	IMSG("Changed value to: \"%s\"", params[0].memref.buffer);
 
 	return TEE_SUCCESS;
 }
