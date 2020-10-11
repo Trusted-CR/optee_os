@@ -1272,6 +1272,42 @@ static void set_ctx_regs(struct thread_ctx_regs *regs, unsigned long a0,
 #endif
 }
 
+uint32_t criu_thread_enter_user_mode(unsigned long entry_func, 
+		unsigned long user_sp, uint64_t * r, uint32_t *exit_status0, 
+		uint32_t *exit_status1)
+{
+	uint32_t spsr = 0;
+	uint32_t exceptions = 0;
+	uint32_t rc = 0;
+	struct thread_ctx_regs *regs = NULL;
+
+	tee_ta_update_session_utime_resume();
+
+	/* Derive SPSR from current CPSR/PSTATE readout. */
+	bool is_32bit = false;
+	if (!get_spsr(is_32bit, entry_func, &spsr)) {
+		*exit_status0 = 1; /* panic */
+		*exit_status1 = 0xbadbadba;
+		return 0;
+	}
+
+	exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
+	/*
+	 * We're using the per thread location of saved context registers
+	 * for temporary storage. Now that exceptions are masked they will
+	 * not be used for any thing else until they are eventually
+	 * unmasked when user mode has been entered.
+	 */
+	regs = thread_get_ctx_regs();
+	set_ctx_regs(regs, r[0], r[1], r[2], r[3], user_sp, entry_func, spsr);
+	for(int i = 0; i < 31; i++) {
+		regs->x[i] = r[i];
+	}
+	rc = __thread_enter_user_mode(regs, exit_status0, exit_status1);
+	thread_unmask_exceptions(exceptions);
+	return rc;
+}
+
 uint32_t thread_enter_user_mode(unsigned long a0, unsigned long a1,
 		unsigned long a2, unsigned long a3, unsigned long user_sp,
 		unsigned long entry_func, bool is_32bit,

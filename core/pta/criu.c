@@ -77,17 +77,11 @@ static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	return utc;
 }
 
-static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp) {
-	// JUMP TO USER MODE
-	unsigned long a0 = 0;
-	unsigned long a1 = 0;
-	unsigned long a2 = 0;
-	unsigned long a3 = 0;
-	bool is_32bit = false;
+static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp, uint64_t * regs) {
 	uint32_t exit_status0 = 0;
 	uint32_t exit_status1 = 0;
 
-	thread_enter_user_mode(a0, a1, a2, a3, user_sp, entry_func, is_32bit, &exit_status0, &exit_status1);
+	criu_thread_enter_user_mode(entry_func, user_sp, regs, &exit_status0, &exit_status1);
 }
 
 static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * utc) {
@@ -146,6 +140,39 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 
 	vaddr_t entry_addr = 0x40053ea0;
 
+	uint64_t regs[31];
+	regs[0] = 0x7ffca46aa0;
+	regs[1] = 0x7ffca46a90;
+	regs[2] = 0x9;
+	regs[3] = 0xffffffffffffffff;
+	regs[4] = 0xffffffffffffffff;
+	regs[5] = 0x744ce09009;
+	regs[6] = 0xa;
+	regs[7] = 0xa;
+	regs[8] = 0x65;
+	regs[9] = 0xec076ab7fa1fef8d;
+	regs[10] = 0x4001;
+	regs[11] = 0x0;
+	regs[12] = 0x2;
+	regs[13] = 0x7ffca46660;
+	regs[14] = 0x10;
+	regs[15] = 0x400e3d3c;
+	regs[16] = 0xffffffff;
+	regs[17] = 0x0;
+	regs[18] = 0x744e054000;
+	regs[19] = 0x1;
+	regs[20] = 0x744d247fc0;
+	regs[21] = 0x400dea30;
+	regs[22] = 0x40050190;
+	regs[23] = 0x6474e552;
+	regs[24] = 0x40050040;
+	regs[25] = 0x0;
+	regs[26] = 0x0;
+	regs[27] = 0x0;
+	regs[28] = 0x0;
+	regs[29] = 0x7ffca46ad0;
+	regs[30] = 0x40052414;
+
 	utc->is_32bit = false;
 
 	DMSG("\n\nCRIU - ALLOC stack: %p", stack_addr_start);
@@ -187,6 +214,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 
 	DMSG("CRIU - DATA COPIED OVER!\n\n");
 
+	uint64_t * sleep_argument_stack_address = 0x7ffca46aa0;
+	*sleep_argument_stack_address = 1;
+
 	DMSG("\n\nCRIU - SET PROTECTION BITS");
 	res = criu_vm_set_prot(&utc->uctx, code_addr_start,
 			  ROUNDUP(code_addr_end - code_addr_start, SMALL_PAGE_SIZE),
@@ -212,7 +242,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * param) {
 
 	DMSG("\n\nCRIU - RUN! Entry address: %p", entry_addr);
 	
-	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr);
+	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, regs);
 	tee_ta_pop_current_session();
 
 	cleanup_allocations(s, utc);
