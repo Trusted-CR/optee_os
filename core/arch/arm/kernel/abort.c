@@ -450,8 +450,10 @@ static bool is_vfp_fault(struct abort_info *ai __unused)
 static enum fault_type get_fault_type(struct abort_info *ai)
 {
 	if (abort_is_user_exception(ai)) {
-		if (is_vfp_fault(ai))
+		if (is_vfp_fault(ai)) {
+			DMSG("USER VFP FAULT DETECTED");
 			return FAULT_TYPE_USER_TA_VFP;
+		}
 #ifndef CFG_WITH_PAGER
 		return FAULT_TYPE_USER_TA_PANIC;
 #endif

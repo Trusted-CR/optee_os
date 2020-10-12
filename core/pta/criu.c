@@ -248,9 +248,17 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	struct criu_vm_area data = {
 		.vm_start		= 0x400de000,
+		.vm_end			= 0x400e2000,
+		.original_data	= checkpointedBinary->memref.buffer,
+		.offset 		= 577536,
+		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	};
+
+	struct criu_vm_area data0 = {
+		.vm_start		= 0x400e2000,
 		.vm_end			= 0x400e4000,
-		.original_data	= NULL,
-		.offset 		= 0,
+		.original_data	= pageData->memref.buffer,
+		.offset 		= (1 * 4096),
 		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
 	};
 
@@ -270,25 +278,17 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
 	};
 
-	// struct criu_vm_area data0 = {
-	// 	.vm_start		= 0x400e2000,
-	// 	.vm_end			= 0x400e2000 + (4096 * 2),
-	// 	.original_data	= pageData->memref.buffer,
-	// 	.offset 		= (1 * 4096),
-	// 	.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	// };
-
-	// struct criu_vm_area data1 = {
-	// 	.vm_start		= 0x400e5000,
-	// 	.vm_end			= 0x400e5000 + (4096 * 5),
-	// 	.original_data	= pageData->memref.buffer,
-	// 	.offset 		= (3 * 4096),
-	// 	.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	// };
+	struct criu_vm_area data3 = {
+		.vm_start		= 0x744ce08000,
+		.vm_end			= 0x744ce08000 + (4096 * 2),
+		.original_data	= pageData->memref.buffer,
+		.offset 		= (19 * 4096),
+		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	};
 
 	vaddr_t entry_addr 		= 0x40053ea4;
 	vaddr_t stack_addr 		= 0x7ffca46a90;
-	uint64_t tpidr_el0_addr 	= 0x400e64b8;
+	uint64_t tpidr_el0_addr 	= 499510443968;
 
 	uint64_t regs[31];
 	regs[0] = 0x7ffca46aa0;
@@ -340,6 +340,11 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 		return res;
 	}
 
+	if (res = map_vm_area(utc, &data0)) {
+		DMSG("CRIU - ALLOC data0 failed: %d", res);
+		return res;
+	}	
+
 	if (res = map_vm_area(utc, &data1)) {
 		DMSG("CRIU - ALLOC data1 failed: %d", res);
 		return res;
@@ -347,6 +352,11 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	
 	if (res = map_vm_area(utc, &data2)) {
 		DMSG("CRIU - ALLOC data2 failed: %d", res);
+		return res;
+	}
+
+	if (res = map_vm_area(utc, &data3)) {
+		DMSG("CRIU - ALLOC data3 failed: %d", res);
 		return res;
 	}
 
@@ -362,9 +372,12 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	DMSG("\n\nCRIU - DATA COPY START!");
 	memcpy((void *)code.vm_start, code.original_data + code.offset, code.vm_end - code.vm_start);
-	memcpy((void *)stack.vm_start, stack.original_data + stack.offset, stack.vm_end - stack.vm_start);	
+	memcpy((void *)stack.vm_start, stack.original_data + stack.offset, stack.vm_end - stack.vm_start);
+	memcpy((void *)data.vm_start, data.original_data + data.offset, data.vm_end - data.vm_start);	
+	memcpy((void *)data0.vm_start, data0.original_data + data0.offset, data0.vm_end - data0.vm_start);	
 	memcpy((void *)data1.vm_start, data1.original_data + data1.offset, data1.vm_end - data1.vm_start);		
-	memcpy((void *)data2.vm_start, data2.original_data + data2.offset, data2.vm_end - data2.vm_start);	
+	memcpy((void *)data2.vm_start, data2.original_data + data2.offset, data2.vm_end - data2.vm_start);		
+	memcpy((void *)data3.vm_start, data3.original_data + data3.offset, data3.vm_end - data3.vm_start);	
 
 	// memset((void *)allocated_area_start, 0, allocated_area_end - allocated_area_start);
 
