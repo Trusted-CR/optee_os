@@ -85,10 +85,12 @@ static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	return utc;
 }
 
-static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp, uint64_t * regs) {
+static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp, uint64_t tpidr_el0_addr, uint64_t * regs) {
 	uint32_t exit_status0 = 0;
 	uint32_t exit_status1 = 0;
 
+	// Restore the tpidr_el0 register
+	asm("msr tpidr_el0, %0" : : "r" (tpidr_el0_addr));
 	criu_thread_enter_user_mode(entry_func, user_sp, regs, &exit_status0, &exit_status1);
 }
 
@@ -260,6 +262,14 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
 	};
 
+	struct criu_vm_area data2 = {
+		.vm_start		= 0x400e5000,
+		.vm_end			= 0x400e9000,
+		.original_data	= pageData->memref.buffer,
+		.offset 		= 4096*3,
+		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	};
+
 	// struct criu_vm_area data0 = {
 	// 	.vm_start		= 0x400e2000,
 	// 	.vm_end			= 0x400e2000 + (4096 * 2),
@@ -276,8 +286,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	// 	.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
 	// };
 
-	vaddr_t entry_addr = 0x40053ea4;
-	vaddr_t stack_addr = 0x7ffca46a90;
+	vaddr_t entry_addr 		= 0x40053ea4;
+	vaddr_t stack_addr 		= 0x7ffca46a90;
+	uint64_t tpidr_el0_addr 	= 0x400e64b8;
 
 	uint64_t regs[31];
 	regs[0] = 0x7ffca46aa0;
@@ -314,23 +325,28 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	utc->is_32bit = false;
 
-	if (map_vm_area(utc, &stack)) {
+	if (res = map_vm_area(utc, &stack)) {
 		DMSG("CRIU - ALLOC stack failed: %d", res);
 		return res;
 	}
 
-	if (map_vm_area(utc, &code)) {
+	if (res = map_vm_area(utc, &code)) {
 		DMSG("CRIU - ALLOC code failed: %d", res);
 		return res;
 	}
 
-	if (map_vm_area(utc, &data)) {
+	if (res = map_vm_area(utc, &data)) {
 		DMSG("CRIU - ALLOC data failed: %d", res);
 		return res;
 	}
 
-	if (map_vm_area(utc, &data1)) {
+	if (res = map_vm_area(utc, &data1)) {
 		DMSG("CRIU - ALLOC data1 failed: %d", res);
+		return res;
+	}	
+	
+	if (res = map_vm_area(utc, &data2)) {
+		DMSG("CRIU - ALLOC data2 failed: %d", res);
 		return res;
 	}
 
@@ -347,7 +363,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	DMSG("\n\nCRIU - DATA COPY START!");
 	memcpy((void *)code.vm_start, code.original_data + code.offset, code.vm_end - code.vm_start);
 	memcpy((void *)stack.vm_start, stack.original_data + stack.offset, stack.vm_end - stack.vm_start);	
-	memcpy((void *)data1.vm_start, data1.original_data + data1.offset, data1.vm_end - data1.vm_start);	
+	memcpy((void *)data1.vm_start, data1.original_data + data1.offset, data1.vm_end - data1.vm_start);		
+	memcpy((void *)data2.vm_start, data2.original_data + data2.offset, data2.vm_end - data2.vm_start);	
 
 	// memset((void *)allocated_area_start, 0, allocated_area_end - allocated_area_start);
 
@@ -379,7 +396,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	DMSG("\n\nCRIU - RUN! Entry address: %p", entry_addr);
 	
-	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, regs);
+	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, tpidr_el0_addr, regs);
 	tee_ta_pop_current_session();
 
 	cleanup_allocations(s, utc);
