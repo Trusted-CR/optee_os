@@ -28,6 +28,14 @@ extern void dump_xlat_table(vaddr_t va, int level);
 #define CRIU_LOAD_CHECKPOINT	0
 #define CRIU_PRINT_HELLO		1
 
+struct criu_vm_area {
+	vaddr_t vm_start;
+	vaddr_t vm_end;
+	void * original_data;
+	unsigned long offset;
+	uint32_t protection;
+};
+
 const uint8_t binary_data[4096] __aligned(4096) = {
 	0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 0x80, 0xd2,
 	0x01, 0x00, 0x00, 0xd4 };
@@ -108,6 +116,16 @@ static void dump_mmu_tables(struct core_mmu_map * map) {
 	}
 }
 
+static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct criu_vm_area * area) {
+	if(area == NULL)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	DMSG("\n\nCRIU - ALLOC: %p", area->vm_start);
+	return criu_alloc_and_map_ldelf_fobj(utc, area->vm_end - area->vm_start,
+				       area->protection,
+				       &area->vm_start);
+}
+
 static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param * pageData) {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
@@ -128,17 +146,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	s->ctx = &utc->uctx.ctx;
 
-	tee_ta_push_current_session(s);	
-	vaddr_t allocated_area_start = 0x744d245000;
-	vaddr_t allocated_area_end   = 0x744d248000;
-
-	struct criu_vm_area {
-		vaddr_t vm_start;
-		vaddr_t vm_end;
-		void * original_data;
-		unsigned long offset;
-		uint32_t protection;
-	};
+	tee_ta_push_current_session(s);
 
 	struct criu_vm_area code = {
 		.vm_start		= 0x40050000,
@@ -149,33 +157,47 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	};
 
 	struct criu_vm_area stack = {
-		.vm_start		= 0x7ffca46000,
+		.vm_start		= 0x7ffca45000,
 		.vm_end			= 0x7ffca48000,
-		.original_data	= 0,
+		.original_data	= pageData->memref.buffer,
+		.offset 		= (40-3)*4096,
+		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	};
+
+	struct criu_vm_area data = {
+		.vm_start		= 0x400de000,
+		.vm_end			= 0x400e4000,
+		.original_data	= NULL,
 		.offset 		= 0,
 		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
 	};
 
-	struct criu_vm_area data0 = {
-		.vm_start		= 0x400e2000,
-		.vm_end			= 0x400e2000 + (4096 * 2),
-		.original_data	= pageData->memref.buffer,
-		.offset 		= (1 * 4096),
-		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	};
-
 	struct criu_vm_area data1 = {
-		.vm_start		= 0x400e5000,
-		.vm_end			= 0x400e5000 + (4096 * 5),
+		.vm_start		= 0x744d247000,
+		.vm_end			= 0x744d248000,
 		.original_data	= pageData->memref.buffer,
-		.offset 		= (3 * 4096),
+		.offset 		= 4096*34,
 		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
 	};
-	
-	vaddr_t data_addr_start = 0x400de000;
-	vaddr_t data_addr_end   = 0x400e4000;
 
-	vaddr_t entry_addr = 0x40053ea0;
+	// struct criu_vm_area data0 = {
+	// 	.vm_start		= 0x400e2000,
+	// 	.vm_end			= 0x400e2000 + (4096 * 2),
+	// 	.original_data	= pageData->memref.buffer,
+	// 	.offset 		= (1 * 4096),
+	// 	.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	// };
+
+	// struct criu_vm_area data1 = {
+	// 	.vm_start		= 0x400e5000,
+	// 	.vm_end			= 0x400e5000 + (4096 * 5),
+	// 	.original_data	= pageData->memref.buffer,
+	// 	.offset 		= (3 * 4096),
+	// 	.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
+	// };
+
+	vaddr_t entry_addr = 0x40053ea4;
+	vaddr_t stack_addr = 0x7ffca46a90;
 
 	uint64_t regs[31];
 	regs[0] = 0x7ffca46aa0;
@@ -212,40 +234,28 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	utc->is_32bit = false;
 
-	DMSG("\n\nCRIU - ALLOC stack: %p", stack.vm_start);
-	res = criu_alloc_and_map_ldelf_fobj(utc, stack.vm_end - stack.vm_start,
-				       stack.protection,
-				       &stack.vm_start);
-	if (res) {
+	if (map_vm_area(utc, &stack)) {
 		DMSG("CRIU - ALLOC stack failed: %d", res);
 		return res;
 	}
-	utc->ldelf_stack_ptr = stack.vm_end;
 
-	DMSG("\n\nCRIU - ALLOC code: %p", code.vm_start);
-	res = criu_alloc_and_map_ldelf_fobj(utc, code.vm_end - code.vm_start, code.protection,
-				       &code.vm_start);
-	if (res) {
+	if (map_vm_area(utc, &code)) {
 		DMSG("CRIU - ALLOC code failed: %d", res);
 		return res;
 	}
-	utc->entry_func = entry_addr;
 
-	DMSG("\n\nCRIU - ALLOC data: %p", data_addr_start);
-	res = criu_alloc_and_map_ldelf_fobj(utc, data_addr_end - data_addr_start, TEE_MATTR_URW,
-				       &data_addr_start);
-	if (res) {
+	if (map_vm_area(utc, &data)) {
 		DMSG("CRIU - ALLOC data failed: %d", res);
 		return res;
 	}
 
-	DMSG("\n\nCRIU - ALLOC another area: %p", allocated_area_start);
-	res = criu_alloc_and_map_ldelf_fobj(utc, allocated_area_end - allocated_area_start, TEE_MATTR_URW,
-				       &allocated_area_start);
-	if (res) {
-		DMSG("CRIU - ALLOC another area failed: %d", res);
+	if (map_vm_area(utc, &data1)) {
+		DMSG("CRIU - ALLOC data1 failed: %d", res);
 		return res;
 	}
+
+	utc->ldelf_stack_ptr = stack_addr;
+	utc->entry_func = entry_addr;
 
 	DMSG("\n\nCRIU - ALLOCATION COMPLETED!");
 
@@ -255,12 +265,11 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	// dump_mmu_tables(&utc->uctx.map);
 
 	DMSG("\n\nCRIU - DATA COPY START!");
-	memcpy((void *)code.vm_start, code.original_data + code.offset, code.vm_end - code.vm_start);	
+	memcpy((void *)code.vm_start, code.original_data + code.offset, code.vm_end - code.vm_start);
+	memcpy((void *)stack.vm_start, stack.original_data + stack.offset, stack.vm_end - stack.vm_start);	
+	memcpy((void *)data1.vm_start, data1.original_data + data1.offset, data1.vm_end - data1.vm_start);	
 
-	uint64_t * sleep_argument_stack_address = 0x7ffca46aa0;
-	*sleep_argument_stack_address = 1;
-
-	memset((void *)allocated_area_start, 0, allocated_area_end - allocated_area_start);
+	// memset((void *)allocated_area_start, 0, allocated_area_end - allocated_area_start);
 
 	DMSG("CRIU - DATA COPIED OVER!\n\n");
 
