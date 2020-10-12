@@ -245,19 +245,26 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		set_svc_retval(regs, TEE_ERROR_GENERIC);
 		return true; /* return to user mode */
 	}
-	DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
 
-	if(scn == 101) {
-		uint64_t * s = regs->x0;
-		DMSG("syscall nanosleep handled: %llu seconds (%p)", *s, regs->x0);
-		mdelay(*s * 1000);
-		set_svc_retval(regs, 0);
-		return true;
-	}
+	//DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
 
 	if(scn == 93) {
 		DMSG("syscall sys_exit handled");
 		scn = 0;
+	} else if (scn == 64) {
+		char temp_string[regs->x2+1];
+		memcpy(temp_string, regs->x1, regs->x2);
+		temp_string[regs->x2] = 0;
+		DMSG("syscall write handled: %s", temp_string);
+
+		set_svc_retval(regs, 0);
+		return true;
+	} else if(scn == 101) {
+		uint64_t * s = regs->x0;
+		DMSG("syscall nanosleep handled: %llu seconds", *s);
+		mdelay(*s * 1000);
+		set_svc_retval(regs, 0);
+		return true;
 	}
 
 	scf = get_syscall_func(scn);
