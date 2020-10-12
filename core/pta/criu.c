@@ -126,6 +126,16 @@ static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct criu_vm_area * ar
 				       &area->vm_start);
 }
 
+void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * state) {
+	volatile uint64_t * p = NULL;
+	for(uint8_t i = 0, vregs_idx = 0; i < 32; i++) {
+		p = &state->vfp.reg[i].v[0];
+		*p = vregs[vregs_idx++];
+		p++;
+		*p = vregs[vregs_idx++];
+	}
+}
+
 static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param * pageData) {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
@@ -140,12 +150,82 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	s->lock_thread = THREAD_ID_INVALID;
 	s->ref_count = 1;
 
+	uint64_t vregs[] =  { 723401728380766730,
+                        723401728380766730,
+                        2675202428892898632,
+                        8245935278385007204,
+                        7310222162287403066,
+                        7809558913277586791,
+                        0,
+                        1024,
+                        0,
+                        0,
+                        4616194021471028225,
+                        4616194021471028225,
+                        262144,
+                        262144,
+                        9232388042942056450,
+                        9232388042942056450,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        4616194021471028225,
+                        4616194021471028225,
+                        8797167288320,
+                        524288,
+                        8796093022208,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0 };
 
 	// Create the user TA
 	struct user_ta_ctx * utc = create_user_ta_ctx(&uuid);
 
 	s->ctx = &utc->uctx.ctx;
 
+	set_vfp_registers(vregs, &utc->uctx.vfp);
+	
+	// for(int y = 0; y < 16; y++) {
+	// 	DMSG("checkpoint_vfp.vfp.reg[1].v[%d]: %p", y, utc->uctx.vfp.vfp.reg[1].v[y]);	
+	// }
+	
 	tee_ta_push_current_session(s);
 
 	struct criu_vm_area code = {
