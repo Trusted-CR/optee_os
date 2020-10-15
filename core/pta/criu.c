@@ -7,13 +7,6 @@
 #include <mm/tee_mmu.h>
 #include <mm/core_mmu.h>
 #include <string.h>
-#include <tee_syscall_numbers.h>
-#include <tee/arch_svc.h>
-
-// Stolen from arch_svc_private.h
-typedef void (*syscall_t)(void);
-
-extern void dump_xlat_table(vaddr_t va, int level);
 
 #define TA_NAME		"criu.ta"
 
@@ -26,7 +19,6 @@ extern void dump_xlat_table(vaddr_t va, int level);
 			{ 0x87, 0x94, 0x10, 0x02, 0xa5, 0xd5, 0xc6, 0x1d } }
 
 #define CRIU_LOAD_CHECKPOINT	0
-#define CRIU_PRINT_HELLO		1
 
 struct criu_vm_area {
 	vaddr_t vm_start;
@@ -36,23 +28,10 @@ struct criu_vm_area {
 	uint32_t protection;
 };
 
-const uint8_t binary_data[4096] __aligned(4096) = {
-	0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 0x80, 0xd2,
-	0x01, 0x00, 0x00, 0xd4 };
-
-static TEE_Result open_session(uint32_t param_types __unused,
-			       TEE_Param params[TEE_NUM_PARAMS] __unused,
-			       void **sess_ctx)
-{
-	DMSG("Open session to %s", TA_NAME);
-
-	return TEE_SUCCESS;
-}
-
-static void close_session(void *sess_ctx)
-{
-	DMSG("Closed session to %s", TA_NAME);
-}
+// This is test data, consisting of instructions that only executes a sys_exit syscall
+// const uint8_t binary_data[4096] __aligned(4096) = { 
+	// 0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 
+	// 0x80, 0xd2, 0x01, 0x00, 0x00, 0xd4 };
 
 static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	TEE_Result res;
@@ -60,8 +39,10 @@ static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 
 	/* Register context */
 	utc = calloc(1, sizeof(struct user_ta_ctx));
-	if (!utc)
-		return TEE_ERROR_OUT_OF_MEMORY;
+	if (!utc) {
+		DMSG("CRIU: ERROR OUT OF MEMORY");
+		return NULL;
+	}
 
 	utc->uctx.ctx.initializing = true;
 	utc->uctx.is_criu_checkpoint = true;
@@ -79,8 +60,10 @@ static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 
 	utc->uctx.ctx.uuid = *uuid;
 	res = vm_info_init(&utc->uctx);
-	if (res)
-		return res;
+	if (res) {
+		DMSG("CRIU: vm_info_init failed: %d", res);
+		return NULL;
+	}
 
 	return utc;
 }
@@ -111,27 +94,28 @@ static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * 
 	free(s);
 }
 
-static void dump_mmu_tables(struct core_mmu_map * map) {
-	struct core_mmu_map_l1_entry * e = NULL;
-	TAILQ_FOREACH(e, &map->l1_entries, link) {
-		dump_xlat_table(e->idx << 30, 2);
-	}
-}
+// extern void dump_xlat_table(vaddr_t va, int level);
+// static void dump_mmu_tables(struct core_mmu_map * map) {
+// 	struct core_mmu_map_l1_entry * e = NULL;
+// 	TAILQ_FOREACH(e, &map->l1_entries, link) {
+// 		dump_xlat_table(e->idx << 30, 2);
+// 	}
+// }
 
 static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct criu_vm_area * area) {
 	if(area == NULL)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	DMSG("\n\nCRIU - ALLOC: %p", area->vm_start);
+	DMSG("\n\nCRIU - ALLOC: %p", (void *) area->vm_start);
 	return criu_alloc_and_map_ldelf_fobj(utc, area->vm_end - area->vm_start,
 				       area->protection,
 				       &area->vm_start);
 }
 
-void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * state) {
+static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * state) {
 	volatile uint64_t * p = NULL;
 	for(uint8_t i = 0, vregs_idx = 0; i < 32; i++) {
-		p = &state->vfp.reg[i].v[0];
+		p = (volatile uint64_t *) &state->vfp.reg[i].v[0];
 		*p = vregs[vregs_idx++];
 		p++;
 		*p = vregs[vregs_idx++];
@@ -153,7 +137,7 @@ void copy_vm_area_data(struct criu_vm_area * area) {
 
 static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param * pageData) {
 	TEE_Result res;
-	TEE_UUID uuid = { CHECKPOINT_UUID };
+	TEE_UUID uuid = CHECKPOINT_UUID;
 
 	struct tee_ta_session *s = calloc(1, sizeof(struct tee_ta_session));	
 	if (!s)
@@ -271,6 +255,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	// Create the user TA
 	struct user_ta_ctx * utc = create_user_ta_ctx(&uuid);
+	if(utc == NULL)
+		return TEE_ERROR_GENERIC;
 
 	s->ctx = &utc->uctx.ctx;
 
@@ -337,37 +323,37 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	utc->is_32bit = false;
 
-	if (res = map_vm_area(utc, &stack)) {
+	if ((res = map_vm_area(utc, &stack))) {
 		DMSG("CRIU - ALLOC stack failed: %d", res);
 		return res;
 	}
 
-	if (res = map_vm_area(utc, &code)) {
+	if ((res = map_vm_area(utc, &code))) {
 		DMSG("CRIU - ALLOC code failed: %d", res);
 		return res;
 	}
 
-	if (res = map_vm_area(utc, &data)) {
+	if ((res = map_vm_area(utc, &data))) {
 		DMSG("CRIU - ALLOC data failed: %d", res);
 		return res;
 	}
 
-	if (res = map_vm_area(utc, &data0)) {
+	if ((res = map_vm_area(utc, &data0))) {
 		DMSG("CRIU - ALLOC data0 failed: %d", res);
 		return res;
 	}	
 
-	if (res = map_vm_area(utc, &data1)) {
+	if ((res = map_vm_area(utc, &data1))) {
 		DMSG("CRIU - ALLOC data1 failed: %d", res);
 		return res;
 	}	
 	
-	if (res = map_vm_area(utc, &data2)) {
+	if ((res = map_vm_area(utc, &data2))) {
 		DMSG("CRIU - ALLOC data2 failed: %d", res);
 		return res;
 	}
 
-	if (res = map_vm_area(utc, &data3)) {
+	if ((res = map_vm_area(utc, &data3))) {
 		DMSG("CRIU - ALLOC data3 failed: %d", res);
 		return res;
 	}
@@ -418,7 +404,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	user_mode_ctx_print_mappings(&utc->uctx);
 
-	DMSG("\n\nCRIU - RUN! Entry address: %p", checkpoint.entry_addr);
+	DMSG("\n\nCRIU - RUN! Entry address: %p", (void *) checkpoint.entry_addr);
 	
 	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, checkpoint.tpidr_el0_addr, checkpoint.regs);
 	tee_ta_pop_current_session();
@@ -442,7 +428,7 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 
 	IMSG("Got data from NW, size: %d and %d", params[0].memref.size, params[1].memref.size);
 
-	DMSG("Second argument contains: %s", params[0].memref.buffer);
+	DMSG("Second argument contains: %s", (char *) params[0].memref.buffer);
 
 	// LOAD CHECKPOINT DATA
 	load_checkpoint_data(&params[0], &params[1]);
@@ -452,14 +438,7 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 			(params[0].memref.size >= sizeof(message) 
 			? sizeof(message) : params[0].memref.size));
 	
-	IMSG("Changed value to: \"%s\"", params[0].memref.buffer);
-
-	return TEE_SUCCESS;
-}
-
-static TEE_Result criu_print_hello(uint32_t type, TEE_Param p[TEE_NUM_PARAMS])
-{
-	DMSG("HELLO WORLD!");
+	IMSG("Changed value to: \"%s\"", (char *) params[0].memref.buffer);
 
 	return TEE_SUCCESS;
 }
@@ -474,12 +453,23 @@ static TEE_Result invoke_command(void *psess __unused,
 	switch (cmd) {
 	case CRIU_LOAD_CHECKPOINT:
 		return criu_load_checkpoint(ptypes, params);
-	case CRIU_PRINT_HELLO:
-		return criu_print_hello(ptypes, params);
 	default:
 		break;
 	}
 	return TEE_ERROR_BAD_PARAMETERS;
+}
+
+static TEE_Result open_session(uint32_t param_types __unused,
+			       TEE_Param params[TEE_NUM_PARAMS] __unused,
+			       void **sess_ctx) {
+	(void) sess_ctx; // Susspress unused variable warning
+	DMSG("Open session to %s", TA_NAME);
+	return TEE_SUCCESS;
+}
+
+static void close_session(void *sess_ctx) {
+	(void) sess_ctx; // Suspress unused variable warning
+	DMSG("Closed session to %s", TA_NAME);
 }
 
 pseudo_ta_register(.uuid = CRIU_UUID, .name = TA_NAME,
