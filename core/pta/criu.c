@@ -138,6 +138,19 @@ void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * state) {
 	}
 }
 
+struct criu_checkpoint {
+	uint64_t vregs[64];
+	uint64_t regs[31];
+	uint64_t entry_addr;
+	uint64_t stack_addr;
+	uint64_t tpidr_el0_addr;
+};
+
+
+void copy_vm_area_data(struct criu_vm_area * area) {
+	memcpy((void *)area->vm_start, area->original_data + area->offset, area->vm_end - area->vm_start);
+}
+
 static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param * pageData) {
 	TEE_Result res;
 	TEE_UUID uuid = { CHECKPOINT_UUID };
@@ -152,81 +165,116 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	s->lock_thread = THREAD_ID_INVALID;
 	s->ref_count = 1;
 
-	uint64_t vregs[] =  { 723401728380766730,
-                        723401728380766730,
-                        2675202428892898632,
-                        8245935278385007204,
-                        7310222162287403066,
-                        7809558913277586791,
-                        0,
-                        1024,
-                        0,
-                        0,
-                        4616194021471028225,
-                        4616194021471028225,
-                        262144,
-                        262144,
-                        9232388042942056450,
-                        9232388042942056450,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        4616194021471028225,
-                        4616194021471028225,
-                        8797167288320,
-                        524288,
-                        8796093022208,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0 };
+	struct criu_checkpoint checkpoint = {
+		.vregs = { 
+			723401728380766730,
+			723401728380766730,
+			2675202428892898632,
+			8245935278385007204,
+			7310222162287403066,
+			7809558913277586791,
+			0,
+			1024,
+			0,
+			0,
+			4616194021471028225,
+			4616194021471028225,
+			262144,
+			262144,
+			9232388042942056450,
+			9232388042942056450,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			4616194021471028225,
+			4616194021471028225,
+			8797167288320,
+			524288,
+			8796093022208,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0 },
+		.regs = {
+			0x7ffca46aa0,
+			0x7ffca46a90,
+			0x9,
+			0xffffffffffffffff,
+			0xffffffffffffffff,
+			0x744ce09009,
+			0xa,
+			0xa,
+			0x65,
+			0xec076ab7fa1fef8d,
+			0x4001,
+			0x0,
+			0x2,
+			0x7ffca46660,
+			0x10,
+			0x400e3d3c,
+			0xffffffff,
+			0x0,
+			0x744e054000,
+			0x1,
+			0x744d247fc0,
+			0x400dea30,
+			0x40050190,
+			0x6474e552,
+			0x40050040,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x7ffca46ad0,
+			0x40052414
+		},
+		.entry_addr = 0x40053ea4,
+		.stack_addr = 0x7ffca46a90,
+		.tpidr_el0_addr = 499510443968
+	};
 
 	// Create the user TA
 	struct user_ta_ctx * utc = create_user_ta_ctx(&uuid);
 
 	s->ctx = &utc->uctx.ctx;
 
-	set_vfp_registers(vregs, &utc->uctx.vfp);
-	
-	// for(int y = 0; y < 16; y++) {
-	// 	DMSG("checkpoint_vfp.vfp.reg[1].v[%d]: %p", y, utc->uctx.vfp.vfp.reg[1].v[y]);	
-	// }
+	set_vfp_registers(checkpoint.vregs, &utc->uctx.vfp);
 	
 	tee_ta_push_current_session(s);
 
@@ -286,42 +334,6 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
 	};
 
-	vaddr_t entry_addr 		= 0x40053ea4;
-	vaddr_t stack_addr 		= 0x7ffca46a90;
-	uint64_t tpidr_el0_addr 	= 499510443968;
-
-	uint64_t regs[31];
-	regs[0] = 0x7ffca46aa0;
-	regs[1] = 0x7ffca46a90;
-	regs[2] = 0x9;
-	regs[3] = 0xffffffffffffffff;
-	regs[4] = 0xffffffffffffffff;
-	regs[5] = 0x744ce09009;
-	regs[6] = 0xa;
-	regs[7] = 0xa;
-	regs[8] = 0x65;
-	regs[9] = 0xec076ab7fa1fef8d;
-	regs[10] = 0x4001;
-	regs[11] = 0x0;
-	regs[12] = 0x2;
-	regs[13] = 0x7ffca46660;
-	regs[14] = 0x10;
-	regs[15] = 0x400e3d3c;
-	regs[16] = 0xffffffff;
-	regs[17] = 0x0;
-	regs[18] = 0x744e054000;
-	regs[19] = 0x1;
-	regs[20] = 0x744d247fc0;
-	regs[21] = 0x400dea30;
-	regs[22] = 0x40050190;
-	regs[23] = 0x6474e552;
-	regs[24] = 0x40050040;
-	regs[25] = 0x0;
-	regs[26] = 0x0;
-	regs[27] = 0x0;
-	regs[28] = 0x0;
-	regs[29] = 0x7ffca46ad0;
-	regs[30] = 0x40052414;
 
 	utc->is_32bit = false;
 
@@ -360,8 +372,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 		return res;
 	}
 
-	utc->ldelf_stack_ptr = stack_addr;
-	utc->entry_func = entry_addr;
+	utc->ldelf_stack_ptr = checkpoint.stack_addr;
+	utc->entry_func = checkpoint.entry_addr;
 
 	DMSG("\n\nCRIU - ALLOCATION COMPLETED!");
 
@@ -371,15 +383,14 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	// dump_mmu_tables(&utc->uctx.map);
 
 	DMSG("\n\nCRIU - DATA COPY START!");
-	memcpy((void *)code.vm_start, code.original_data + code.offset, code.vm_end - code.vm_start);
-	memcpy((void *)stack.vm_start, stack.original_data + stack.offset, stack.vm_end - stack.vm_start);
-	memcpy((void *)data.vm_start, data.original_data + data.offset, data.vm_end - data.vm_start);	
-	memcpy((void *)data0.vm_start, data0.original_data + data0.offset, data0.vm_end - data0.vm_start);	
-	memcpy((void *)data1.vm_start, data1.original_data + data1.offset, data1.vm_end - data1.vm_start);		
-	memcpy((void *)data2.vm_start, data2.original_data + data2.offset, data2.vm_end - data2.vm_start);		
-	memcpy((void *)data3.vm_start, data3.original_data + data3.offset, data3.vm_end - data3.vm_start);	
 
-	// memset((void *)allocated_area_start, 0, allocated_area_end - allocated_area_start);
+	copy_vm_area_data(&code);
+	copy_vm_area_data(&stack);
+	copy_vm_area_data(&data);
+	copy_vm_area_data(&data0);	
+	copy_vm_area_data(&data1);		
+	copy_vm_area_data(&data2);		
+	copy_vm_area_data(&data3);	
 
 	DMSG("CRIU - DATA COPIED OVER!\n\n");
 
@@ -407,9 +418,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 
 	user_mode_ctx_print_mappings(&utc->uctx);
 
-	DMSG("\n\nCRIU - RUN! Entry address: %p", entry_addr);
+	DMSG("\n\nCRIU - RUN! Entry address: %p", checkpoint.entry_addr);
 	
-	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, tpidr_el0_addr, regs);
+	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, checkpoint.tpidr_el0_addr, checkpoint.regs);
 	tee_ta_pop_current_session();
 
 	cleanup_allocations(s, utc);
