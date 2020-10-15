@@ -7,6 +7,7 @@
 #include <mm/tee_mmu.h>
 #include <mm/core_mmu.h>
 #include <string.h>
+#include <criu/jsmn.h>
 
 #define TA_NAME		"criu.ta"
 
@@ -32,6 +33,14 @@ struct criu_vm_area {
 // const uint8_t binary_data[4096] __aligned(4096) = { 
 	// 0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 
 	// 0x80, 0xd2, 0x01, 0x00, 0x00, 0xd4 };
+
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
+  if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
+      strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+    return 0;
+  }
+  return -1;
+}
 
 static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	TEE_Result res;
