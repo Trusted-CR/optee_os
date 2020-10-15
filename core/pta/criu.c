@@ -29,6 +29,17 @@ struct criu_vm_area {
 	uint32_t protection;
 };
 
+// TAILQ_HEAD(criu_vm_area_head, criu_vm_area);
+	// struct criu_vm_area_head vm_areas;
+
+struct criu_checkpoint {
+	uint64_t vregs[64];
+	uint64_t regs[31];
+	uint64_t entry_addr;
+	uint64_t stack_addr;
+	uint64_t tpidr_el0_addr;
+};
+
 // This is test data, consisting of instructions that only executes a sys_exit syscall
 // const uint8_t binary_data[4096] __aligned(4096) = { 
 	// 0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 
@@ -40,6 +51,73 @@ static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
     return 0;
   }
   return -1;
+}
+
+static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * json) {
+	if(checkpoint == NULL) {
+		DMSG("Error: criu_checkpoint struct is NULL");
+		return false;
+	}
+
+	// Initialize the JSMN json parser
+	jsmn_parser parser;
+	jsmn_init(&parser);
+
+	// First only determine the number of tokens.
+	int items = jsmn_parse(&parser, json, strlen(json), NULL, 128);
+
+	jsmntok_t tokens[items];
+	
+	// Reset position in stream
+	jsmn_init(&parser);
+	int left = jsmn_parse(&parser, json, strlen(json), tokens, items);
+
+	// Invalid file.
+	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
+		DMSG("CRIU: INVALID JSON\n");
+		return false;
+	}
+
+	// Parse the JSON version of the core checkpoint file (example core-2956.img)
+	for(int i = 1; i < items; i++) {
+		if (jsoneq(json, &tokens[i], "regs") == 0) {
+			// Parse all the registers from the checkpoint
+			if(tokens[i+1].type == JSMN_ARRAY) {
+				for(int y = 0; y < tokens[i+1].size && (y < sizeof(checkpoint->regs)); y++) {
+					unsigned long long value = strtoul(json + tokens[i+y+2].start, NULL, 16);
+					checkpoint->regs[y] = value;
+				}
+			}
+		} else if(jsoneq(json, &tokens[i], "vregs") == 0) {
+			// Parse all the VFP registers
+			if(tokens[i+1].type == JSMN_ARRAY) {
+				for(int y = 0; y < tokens[i+1].size && (y < sizeof(checkpoint->vregs)); y++) {
+					unsigned long long value = strtoul(json + tokens[i+y+2].start, NULL, 10);
+					checkpoint->vregs[y] = value;
+				}
+			}
+		} else if(jsoneq(json, &tokens[i], "pc") == 0) {
+			// Parse the checkpoint program counter
+			if(tokens[i+1].type == JSMN_STRING) {
+				unsigned long long value = strtoul(json + tokens[i+1].start, NULL, 16);
+				checkpoint->entry_addr = value;
+			}			
+		} else if(jsoneq(json, &tokens[i], "sp") == 0) {
+			// Parse the checkpoint stack pointer
+			if(tokens[i+1].type == JSMN_STRING) {
+				unsigned long long value = strtoul(json + tokens[i+1].start, NULL, 16);
+				checkpoint->stack_addr = value;
+			}			
+		} else if(jsoneq(json, &tokens[i], "tls") == 0) {
+			// Parse the TPIDR_EL0 address
+			if(tokens[i+1].type == JSMN_PRIMITIVE) {
+				unsigned long long value = strtoul(json + tokens[i+1].start, NULL, 10);
+				checkpoint->tpidr_el0_addr = value;
+			}			
+		}
+	}
+
+	return true;
 }
 
 static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
@@ -131,15 +209,6 @@ static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * s
 	}
 }
 
-struct criu_checkpoint {
-	uint64_t vregs[64];
-	uint64_t regs[31];
-	uint64_t entry_addr;
-	uint64_t stack_addr;
-	uint64_t tpidr_el0_addr;
-};
-
-
 void copy_vm_area_data(struct criu_vm_area * area) {
 	memcpy((void *)area->vm_start, area->original_data + area->offset, area->vm_end - area->vm_start);
 }
@@ -158,109 +227,11 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	s->lock_thread = THREAD_ID_INVALID;
 	s->ref_count = 1;
 
-	struct criu_checkpoint checkpoint = {
-		.vregs = { 
-			723401728380766730,
-			723401728380766730,
-			2675202428892898632,
-			8245935278385007204,
-			7310222162287403066,
-			7809558913277586791,
-			0,
-			1024,
-			0,
-			0,
-			4616194021471028225,
-			4616194021471028225,
-			262144,
-			262144,
-			9232388042942056450,
-			9232388042942056450,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			4616194021471028225,
-			4616194021471028225,
-			8797167288320,
-			524288,
-			8796093022208,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0,
-			0 },
-		.regs = {
-			0x7ffca46aa0,
-			0x7ffca46a90,
-			0x9,
-			0xffffffffffffffff,
-			0xffffffffffffffff,
-			0x744ce09009,
-			0xa,
-			0xa,
-			0x65,
-			0xec076ab7fa1fef8d,
-			0x4001,
-			0x0,
-			0x2,
-			0x7ffca46660,
-			0x10,
-			0x400e3d3c,
-			0xffffffff,
-			0x0,
-			0x744e054000,
-			0x1,
-			0x744d247fc0,
-			0x400dea30,
-			0x40050190,
-			0x6474e552,
-			0x40050040,
-			0x0,
-			0x0,
-			0x0,
-			0x0,
-			0x7ffca46ad0,
-			0x40052414
-		},
-		.entry_addr = 0x40053ea4,
-		.stack_addr = 0x7ffca46a90,
-		.tpidr_el0_addr = 499510443968
-	};
+	struct criu_checkpoint checkpoint = {};
+	if(!parse_checkpoint_core(&checkpoint, test_string)) {
+		DMSG("Checkpoint file core-*.img file is not valid.");
+		return TEE_ERROR_BAD_FORMAT;
+	}
 
 	// Create the user TA
 	struct user_ta_ctx * utc = create_user_ta_ctx(&uuid);
