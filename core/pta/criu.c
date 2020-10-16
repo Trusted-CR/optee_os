@@ -27,17 +27,31 @@ struct criu_vm_area {
 	void * original_data;
 	unsigned long offset;
 	uint32_t protection;
+	uint8_t status;
 };
 
 // TAILQ_HEAD(criu_vm_area_head, criu_vm_area);
 	// struct criu_vm_area_head vm_areas;
 
 struct criu_checkpoint {
+	struct criu_vm_area * vm_areas;
+	uint32_t vm_area_count;
 	uint64_t vregs[64];
 	uint64_t regs[31];
 	uint64_t entry_addr;
 	uint64_t stack_addr;
 	uint64_t tpidr_el0_addr;
+};
+
+enum criu_protection_bits {
+	PROT_READ  = 1 << 0,
+	PROT_WRITE = 1 << 1,
+	PROT_EXEC  = 1 << 2
+};
+
+enum criu_status_bits {
+	VMA_AREA_REGULAR  = 1 << 0,
+	VMA_FILE_PRIVATE  = 1 << 1
 };
 
 enum checkpoint_file_types { 
@@ -70,6 +84,21 @@ static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
     return 0;
   }
   return -1;
+}
+
+char *sstrstr(char *haystack, char *needle, size_t length)
+{
+    size_t needle_length = strlen(needle);
+    size_t i;
+    for (i = 0; i < length; i++) {
+        if (i + needle_length > length) {
+            return NULL;
+        }
+        if (strncmp(&haystack[i], needle, needle_length) == 0) {
+            return &haystack[i];
+        }
+    }
+    return NULL;
 }
 
 static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
@@ -125,6 +154,65 @@ static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * js
 		} else if(jsoneq(json, &tokens[i], "tls") == 0) { 
 			if(tokens[i+1].type == JSMN_PRIMITIVE)
 				checkpoint->tpidr_el0_addr = strtoul(json + tokens[i+1].start, NULL, 10);
+		}
+	}
+
+	return true;
+}
+
+static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
+	if(checkpoint == NULL) {
+		DMSG("Error: criu_checkpoint struct is NULL");
+		return false;
+	}
+
+	// Initialize the JSMN json parser
+	jsmn_parser parser;
+	jsmn_init(&parser);
+
+	// First only determine the number of tokens.
+	int items = jsmn_parse(&parser, json, file_size, NULL, 128);\
+
+	jsmntok_t tokens[items];
+	
+	// Reset position in stream
+	jsmn_init(&parser);
+	int left = jsmn_parse(&parser, json, file_size, tokens, items);
+
+	// Invalid file.
+	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
+		DMSG("CRIU: INVALID JSON\n");
+		return false;
+	}
+
+	// Parse the JSON version of the core checkpoint file (example core-2956.img)
+	for(int i = 1; i < items; i++) {
+		// Parse the vmas
+		if (jsoneq(json, &tokens[i], "vmas") == 0) {
+			if(tokens[i+1].type == JSMN_ARRAY) {
+				checkpoint->vm_area_count = tokens[++i].size; i++;
+				checkpoint->vm_areas = malloc(sizeof(struct criu_vm_area) * checkpoint->vm_area_count);
+
+				for(int y = 0; y < checkpoint->vm_area_count; y++, i += (tokens[i].size * 2) + 1) {
+					checkpoint->vm_areas[y].vm_start   = strtoul(json + tokens[i+2].start, NULL, 16);
+					checkpoint->vm_areas[y].vm_end     = strtoul(json + tokens[i+4].start, NULL, 16);
+					checkpoint->vm_areas[y].offset     = strtoul(json + tokens[i+6].start, NULL, 10);
+					checkpoint->vm_areas[y].protection = 0;
+					checkpoint->vm_areas[y].status     = 0;
+					
+					if(sstrstr(json + tokens[i+10].start, "PROT_READ", tokens[i+10].end - tokens[i+10].start) != NULL)
+						checkpoint->vm_areas[y].protection |= PROT_READ;
+					if(sstrstr(json + tokens[i+10].start, "PROT_WRITE", tokens[i+10].end - tokens[i+10].start) != NULL)
+						checkpoint->vm_areas[y].protection |= PROT_WRITE;
+					if(sstrstr(json + tokens[i+10].start, "PROT_EXEC", tokens[i+10].end - tokens[i+10].start) != NULL)
+						checkpoint->vm_areas[y].protection |= PROT_EXEC;
+
+					if(sstrstr(json + tokens[i+14].start, "VMA_FILE_PRIVATE", tokens[i+14].end - tokens[i+14].start) != NULL)
+						checkpoint->vm_areas[y].status |= VMA_FILE_PRIVATE;
+				}
+
+				return true;
+			}
 		}
 	}
 
@@ -242,6 +330,11 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	struct criu_checkpoint checkpoint = {};
 	if(!parse_checkpoint_core(&checkpoint, binaryData->memref.buffer + checkpoint_file_var[CORE_FILE].buffer_index, checkpoint_file_var[CORE_FILE].file_size)) {
 		DMSG("Checkpoint file core-*.img file is not valid.");
+		return TEE_ERROR_BAD_FORMAT;
+	}
+
+	if(!parse_checkpoint_mm(&checkpoint, binaryData->memref.buffer + checkpoint_file_var[MM_FILE].buffer_index, checkpoint_file_var[MM_FILE].file_size)) {
+		DMSG("Checkpoint file mm-*.img file is not valid.");
 		return TEE_ERROR_BAD_FORMAT;
 	}
 
@@ -401,6 +494,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, checkpoint.tpidr_el0_addr, checkpoint.regs);
 	tee_ta_pop_current_session();
 
+	if(checkpoint.vm_areas != NULL)
+		free(checkpoint.vm_areas);
+	
 	cleanup_allocations(s, utc);
 
 	return TEE_SUCCESS;
