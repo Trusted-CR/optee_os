@@ -17,6 +17,7 @@ struct criu_vm_area {
 	unsigned long offset;
 	uint32_t protection;
 	uint8_t status;
+	bool dirty;
 };
 
 struct criu_pagemap_entry {

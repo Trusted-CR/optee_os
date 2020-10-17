@@ -151,6 +151,7 @@ static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, char * json
 					checkpoint->vm_areas[y].offset     = strtoul(json + tokens[i+6].start, NULL, 10);
 					checkpoint->vm_areas[y].protection = 0;
 					checkpoint->vm_areas[y].status     = 0;
+					checkpoint->vm_areas[y].dirty      = false;
 					
 					// Parse the VMA protection bits
 					if(sstrstr(json + tokens[i+10].start, "PROT_READ", tokens[i+10].end - tokens[i+10].start) != NULL)
