@@ -36,9 +36,6 @@ struct criu_pagemap_entry {
 	uint8_t flags;
 };
 
-// TAILQ_HEAD(criu_vm_area_head, criu_vm_area);
-	// struct criu_vm_area_head vm_areas;
-
 struct criu_checkpoint {
 	struct criu_vm_area * vm_areas;
 	uint32_t vm_area_count;
@@ -51,15 +48,14 @@ struct criu_checkpoint {
 	uint64_t tpidr_el0_addr;
 };
 
-enum criu_protection_bits {
-	PROT_READ  = 1 << 0,
-	PROT_WRITE = 1 << 1,
-	PROT_EXEC  = 1 << 2
-};
-
 enum criu_status_bits {
 	VMA_AREA_REGULAR  = 1 << 0,
 	VMA_FILE_PRIVATE  = 1 << 1
+};
+
+enum criu_pte_flags {
+	PE_PRESENT  = 1 << 0,
+	PE_LAZY     = 1 << 1
 };
 
 enum checkpoint_file_types { 
@@ -81,10 +77,12 @@ struct checkpoint_file {
 	uint64_t file_size;
 };
 
+#ifdef CRIU_TEST_RETURNING
 // This is test data, consisting of instructions that only executes a sys_exit syscall
-// const uint8_t binary_data[4096] __aligned(4096) = { 
-	// 0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 
-	// 0x80, 0xd2, 0x01, 0x00, 0x00, 0xd4 };
+const uint8_t test_code_exec_sys_exit[4096] __aligned(4096) = { 
+	0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 
+	0x80, 0xd2, 0x01, 0x00, 0x00, 0xd4 };
+#endif
 
 static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
   if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
@@ -212,11 +210,11 @@ static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, char * json
 					
 					// Parse the VMA protection bits
 					if(sstrstr(json + tokens[i+10].start, "PROT_READ", tokens[i+10].end - tokens[i+10].start) != NULL)
-						checkpoint->vm_areas[y].protection |= PROT_READ;
+						checkpoint->vm_areas[y].protection |= TEE_MATTR_UR;
 					if(sstrstr(json + tokens[i+10].start, "PROT_WRITE", tokens[i+10].end - tokens[i+10].start) != NULL)
-						checkpoint->vm_areas[y].protection |= PROT_WRITE;
+						checkpoint->vm_areas[y].protection |= TEE_MATTR_UW;
 					if(sstrstr(json + tokens[i+10].start, "PROT_EXEC", tokens[i+10].end - tokens[i+10].start) != NULL)
-						checkpoint->vm_areas[y].protection |= PROT_EXEC;
+						checkpoint->vm_areas[y].protection |= TEE_MATTR_UX;
 
 					// Parse the VMA status bits
 					if(sstrstr(json + tokens[i+14].start, "VMA_FILE_PRIVATE", tokens[i+14].end - tokens[i+14].start) != NULL)
@@ -262,7 +260,9 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 		if (jsoneq(json, &tokens[i], "entries") == 0) {
 			if(tokens[i+1].type == JSMN_ARRAY) {
 				// Allocate the required number of VMA area structs
-				checkpoint->pagemap_entry_count = tokens[++i].size; i++;
+				// size - 1 as the first entry is "pages_id": 1, checkout pagemap-*.txt
+				// i += 4 to skip the first entry.
+				checkpoint->pagemap_entry_count = tokens[++i].size - 1; i+=4;
 				checkpoint->pagemap_entries = malloc(sizeof(struct criu_pagemap_entry) * checkpoint->pagemap_entry_count);
 
 				// Parse all pagemap entries
@@ -275,9 +275,9 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 						
 						// Parse the flags
 						if(sstrstr(json + tokens[i+6].start, "PE_PRESENT", tokens[i+6].end - tokens[i+6].start) != NULL)
-							checkpoint->pagemap_entries[y].flags |= PROT_READ;
+							checkpoint->pagemap_entries[y].flags |= PE_PRESENT;
 						if(sstrstr(json + tokens[i+6].start, "PE_LAZY", tokens[i+6].end - tokens[i+6].start) != NULL)
-							checkpoint->pagemap_entries[y].flags |= PROT_READ;
+							checkpoint->pagemap_entries[y].flags |= PE_LAZY;
 					}
 				}
 
@@ -362,9 +362,11 @@ static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct criu_vm_area * ar
 	if(area == NULL)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	DMSG("\n\nCRIU - ALLOC: %p", (void *) area->vm_start);
+	DMSG("CRIU - ALLOCATING %p - %p", area->vm_start, area->vm_end);	
+
+	// Append TEE_MATTR_PRW so we can copy over the pagedata, expect that the area is remapped after copying.
 	return criu_alloc_and_map_ldelf_fobj(utc, area->vm_end - area->vm_start,
-				       area->protection,
+				       area->protection | TEE_MATTR_PRW,
 				       &area->vm_start);
 }
 
@@ -378,8 +380,14 @@ static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * s
 	}
 }
 
+void copy_pagemap_entry(struct criu_pagemap_entry * entry, void * buffer) {
+	if(entry != NULL && entry->vaddr != NULL)
+		memcpy((void *)entry->vaddr, buffer, entry->nr_pages * SMALL_PAGE_SIZE);
+}
+
 void copy_vm_area_data(struct criu_vm_area * area) {
-	memcpy((void *)area->vm_start, area->original_data + area->offset, area->vm_end - area->vm_start);
+	if(area->original_data != NULL)
+		memcpy((void *)area->vm_start, area->original_data + area->offset, area->vm_end - area->vm_start);
 }
 
 static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binaryDataInformation) {
@@ -424,98 +432,12 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	
 	tee_ta_push_current_session(s);
 
-	struct criu_vm_area code = {
-		.vm_start		= 0x40050000,
-		.vm_end			= 0x400dd000,
-		.original_data	= binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index,
-		.offset 		= 0,
-		.protection		= TEE_MATTR_PRW
-	};
-
-	struct criu_vm_area stack = {
-		.vm_start		= 0x7ffca45000,
-		.vm_end			= 0x7ffca48000,
-		.original_data	= binaryData->memref.buffer + checkpoint_file_var[PAGES_BINARY_FILE].buffer_index,
-		.offset 		= (40-3)*4096,
-		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	};
-
-	struct criu_vm_area data = {
-		.vm_start		= 0x400de000,
-		.vm_end			= 0x400e2000,
-		.original_data	= binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index,
-		.offset 		= 577536,
-		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	};
-
-	struct criu_vm_area data0 = {
-		.vm_start		= 0x400e2000,
-		.vm_end			= 0x400e4000,
-		.original_data	= binaryData->memref.buffer + checkpoint_file_var[PAGES_BINARY_FILE].buffer_index,
-		.offset 		= (1 * 4096),
-		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	};
-
-	struct criu_vm_area data1 = {
-		.vm_start		= 0x744d247000,
-		.vm_end			= 0x744d248000,
-		.original_data	= binaryData->memref.buffer + checkpoint_file_var[PAGES_BINARY_FILE].buffer_index,
-		.offset 		= 4096*34,
-		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	};
-
-	struct criu_vm_area data2 = {
-		.vm_start		= 0x400e5000,
-		.vm_end			= 0x400e9000,
-		.original_data	= binaryData->memref.buffer + checkpoint_file_var[PAGES_BINARY_FILE].buffer_index,
-		.offset 		= 4096*3,
-		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	};
-
-	struct criu_vm_area data3 = {
-		.vm_start		= 0x744ce08000,
-		.vm_end			= 0x744ce08000 + (4096 * 2),
-		.original_data	= binaryData->memref.buffer + checkpoint_file_var[PAGES_BINARY_FILE].buffer_index,
-		.offset 		= (19 * 4096),
-		.protection		= TEE_MATTR_URW | TEE_MATTR_PRW
-	};
-
-
-	utc->is_32bit = false;
-
-	if ((res = map_vm_area(utc, &stack))) {
-		DMSG("CRIU - ALLOC stack failed: %d", res);
-		return res;
-	}
-
-	if ((res = map_vm_area(utc, &code))) {
-		DMSG("CRIU - ALLOC code failed: %d", res);
-		return res;
-	}
-
-	if ((res = map_vm_area(utc, &data))) {
-		DMSG("CRIU - ALLOC data failed: %d", res);
-		return res;
-	}
-
-	if ((res = map_vm_area(utc, &data0))) {
-		DMSG("CRIU - ALLOC data0 failed: %d", res);
-		return res;
-	}	
-
-	if ((res = map_vm_area(utc, &data1))) {
-		DMSG("CRIU - ALLOC data1 failed: %d", res);
-		return res;
-	}	
-	
-	if ((res = map_vm_area(utc, &data2))) {
-		DMSG("CRIU - ALLOC data2 failed: %d", res);
-		return res;
-	}
-
-	if ((res = map_vm_area(utc, &data3))) {
-		DMSG("CRIU - ALLOC data3 failed: %d", res);
-		return res;
+	struct criu_vm_area * area = checkpoint.vm_areas;
+	for(int i = 0; i < checkpoint.vm_area_count; i++) {
+		if ((res = map_vm_area(utc, &area[i]))) {
+			DMSG("CRIU - ALLOC %p - %p failed: %p", area[i].vm_start, area[i].vm_end, res);
+			return res;
+		}
 	}
 
 	utc->ldelf_stack_ptr = checkpoint.stack_addr;
@@ -530,20 +452,34 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	DMSG("\n\nCRIU - DATA COPY START!");
 
-	copy_vm_area_data(&code);
-	copy_vm_area_data(&stack);
-	copy_vm_area_data(&data);
-	copy_vm_area_data(&data0);	
-	copy_vm_area_data(&data1);		
-	copy_vm_area_data(&data2);		
-	copy_vm_area_data(&data3);	
+	area = checkpoint.vm_areas;
+	for(int i = 0; i < checkpoint.vm_area_count; i++) {
+		if(area[i].status & VMA_FILE_PRIVATE) {
+			area[i].original_data = binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
+			copy_vm_area_data(&area[i]);
+		}
+	}
+
+	uint32_t pages_file_index = 0;
+	struct criu_pagemap_entry * entry = checkpoint.pagemap_entries;
+	for(int i = 0; i < checkpoint.pagemap_entry_count; i++) {
+		copy_pagemap_entry(&entry[i], 
+				 binaryData->memref.buffer 								// Data buffer
+				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
+				+ SMALL_PAGE_SIZE * pages_file_index);					// Plus offset of the entry
+		pages_file_index += entry[i].nr_pages;
+	}
+
+#ifdef CRIU_TEST_RETURNING
+	memcpy(checkpoint.entry_addr, test_code_exec_sys_exit, sizeof(test_code_exec_sys_exit));
+#endif
 
 	DMSG("CRIU - DATA COPIED OVER!\n\n");
 
 
 	DMSG("\n\nCRIU - SET PROTECTION BITS");
-	res = criu_vm_set_prot(&utc->uctx, code.vm_start,
-			  ROUNDUP(code.vm_end - code.vm_start, SMALL_PAGE_SIZE),
+	res = criu_vm_set_prot(&utc->uctx, area[0].vm_start,
+			  ROUNDUP(area[0].vm_end - area[0].vm_start, SMALL_PAGE_SIZE),
 			  TEE_MATTR_URX);
 	if (res) {
 		DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
@@ -554,8 +490,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	DMSG("CRIU - PROTECTION BITS SET\n\n");
 
-	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, code.vm_start);
+	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, utc->entry_func);
 
+	utc->is_32bit = false;
 	utc->uctx.ctx.ref_count = 1;
 	condvar_init(&utc->uctx.ctx.busy_cv);
 	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->uctx.ctx, link);
