@@ -478,15 +478,17 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 
 	DMSG("\n\nCRIU - SET PROTECTION BITS");
-	res = criu_vm_set_prot(&utc->uctx, area[0].vm_start,
-			  ROUNDUP(area[0].vm_end - area[0].vm_start, SMALL_PAGE_SIZE),
-			  TEE_MATTR_URX);
-	if (res) {
-		DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
-		return res;
-	}
-
-	// dump_mmu_tables(&utc->uctx.map);
+	
+	area = checkpoint.vm_areas;
+	for(int i = 0; i < checkpoint.vm_area_count; i++) {
+		res = criu_vm_set_prot(&utc->uctx, area[i].vm_start,
+			  ROUNDUP(area[i].vm_end - area[i].vm_start, SMALL_PAGE_SIZE),
+			  area[i].protection);
+		if (res) {
+			DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
+			return res;
+		}
+	}	
 
 	DMSG("CRIU - PROTECTION BITS SET\n\n");
 
