@@ -21,62 +21,6 @@
 
 #define CRIU_LOAD_CHECKPOINT	0
 
-struct criu_vm_area {
-	vaddr_t vm_start;
-	vaddr_t vm_end;
-	void * original_data;
-	unsigned long offset;
-	uint32_t protection;
-	uint8_t status;
-};
-
-struct criu_pagemap_entry {
-	vaddr_t vaddr;
-	unsigned long nr_pages;
-	uint8_t flags;
-};
-
-struct criu_checkpoint {
-	struct criu_vm_area * vm_areas;
-	uint32_t vm_area_count;
-	struct criu_pagemap_entry * pagemap_entries;
-	uint32_t pagemap_entry_count;
-	uint64_t vregs[64];
-	uint64_t regs[31];
-	uint64_t entry_addr;
-	uint64_t stack_addr;
-	uint64_t tpidr_el0_addr;
-};
-
-enum criu_status_bits {
-	VMA_AREA_REGULAR  = 1 << 0,
-	VMA_FILE_PRIVATE  = 1 << 1
-};
-
-enum criu_pte_flags {
-	PE_PRESENT  = 1 << 0,
-	PE_LAZY     = 1 << 1
-};
-
-enum checkpoint_file_types { 
-	CORE_FILE = 0,				// core-*.img
-	MM_FILE,				// mm-*.img
-	PAGEMAP_FILE,			// pagemap-*.img
-	PAGES_BINARY_FILE,		// pages-*.img
-	EXECUTABLE_BINARY_FILE	// The binary itself that is checkpointed
-};
-
-// Subtract the last enum from the first to determine the number of 
-// elements in the enum. By doing this we can use the enum values as indexes
-// to the checkpoint_files array. Example checkpoint_files[CORE_FILE].
-static const int CHECKPOINT_FILES = EXECUTABLE_BINARY_FILE - CORE_FILE + 1; 
-
-struct checkpoint_file {
-	enum checkpoint_file_types file_type;
-	uint64_t buffer_index;
-	uint64_t file_size;
-};
-
 #ifdef CRIU_TEST_RETURNING
 // This is test data, consisting of instructions that only executes a sys_exit syscall
 const uint8_t test_code_exec_sys_exit[4096] __aligned(4096) = { 
@@ -428,6 +372,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	s->ctx = &utc->uctx.ctx;
 
+	utc->uctx.checkpoint = &checkpoint;
+
 	set_vfp_registers(checkpoint.vregs, &utc->uctx.vfp);
 	
 	tee_ta_push_current_session(s);
@@ -483,7 +429,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	for(int i = 0; i < checkpoint.vm_area_count; i++) {
 		res = criu_vm_set_prot(&utc->uctx, area[i].vm_start,
 			  ROUNDUP(area[i].vm_end - area[i].vm_start, SMALL_PAGE_SIZE),
-			  area[i].protection);
+			  area[i].protection & ~TEE_MATTR_PW & ~TEE_MATTR_UW);
 		if (res) {
 			DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
 			return res;

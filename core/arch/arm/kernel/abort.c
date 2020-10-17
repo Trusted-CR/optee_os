@@ -453,6 +453,9 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 		if (is_vfp_fault(ai))
 			return FAULT_TYPE_USER_TA_VFP;
 #ifndef CFG_WITH_PAGER
+		if(core_mmu_get_fault_type(ai->fault_descr) == CORE_MMU_FAULT_WRITE_PERMISSION)
+			return FAULT_TYPE_PAGEABLE;
+
 		return FAULT_TYPE_USER_TA_PANIC;
 #endif
 	}
@@ -543,6 +546,30 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			abort_print_error(&ai);
 			panic("abort outside thread context");
 		}
+
+#ifndef CFG_WITH_PAGER
+	DMSG("PAGEABLE: %p - %p", ai.va, ai.va & ~SMALL_PAGE_MASK);
+
+	struct thread_specific_data *tsd = thread_get_tsd();
+	if(is_user_ta_ctx(tsd->ctx)) {
+		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
+		struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
+		
+		struct criu_vm_area * vm_areas;
+		for(int i = 0; i < checkpoint->vm_area_count; i++) {
+			if((checkpoint->vm_areas[i].vm_start <= ai.va) && (ai.va <= checkpoint->vm_areas[i].vm_end)) {
+				DMSG("Found!");
+				DMSG("Area: %p - %p", checkpoint->vm_areas[i].vm_start, checkpoint->vm_areas[i].vm_end);
+
+		
+
+				DMSG("original prot: %d", checkpoint->vm_areas[i].protection & TEE_MATTR_UW);
+			} 
+		}
+	}
+
+	panic("Let's call it a quit");
+#else
 		thread_kernel_save_vfp();
 		handled = tee_pager_handle_fault(&ai);
 		thread_kernel_restore_vfp();
@@ -556,6 +583,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			vfp_disable();
 			handle_user_ta_panic(&ai);
 		}
+#endif
 		break;
 	}
 }
