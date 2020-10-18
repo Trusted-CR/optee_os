@@ -213,7 +213,7 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 				for(int y = 0; y < pagemap_entry_count; y++, i += (tokens[i].size * 2) + 1) {
 					if(tokens[i].size == 3) {
 						// Parse the address, number of pages and initialize the flags.
-						struct criu_pagemap_entry * entry = malloc(sizeof(struct criu_pagemap_entry));
+						struct criu_pagemap_entry * entry = calloc(1, sizeof(struct criu_pagemap_entry));
 						entry->vaddr_start = strtoul(json + tokens[i+2].start, NULL, 16);
 						entry->nr_pages    = strtoul(json + tokens[i+4].start, NULL, 10);
 						entry->vaddr_end   = entry->vaddr_start +
@@ -466,6 +466,10 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		free(checkpoint.vm_areas);
 	// Free all allocated criu_pagemap_entry structs
 	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
+		if(entry->dirty) {
+			DMSG("GOT A DIRTY ENTRY HERE: %p - %p - %d", entry->vaddr_start, entry->vaddr_end, entry->dirty);
+		}
+
 		free(entry);
 	}
 	

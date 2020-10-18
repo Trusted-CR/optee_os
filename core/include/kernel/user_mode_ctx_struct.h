@@ -25,6 +25,7 @@ struct criu_pagemap_entry {
 	vaddr_t vaddr_end;
 	unsigned long nr_pages;
 	uint8_t flags;
+	bool dirty;
 	TAILQ_ENTRY(criu_pagemap_entry) link;
 };
 
