@@ -548,7 +548,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 		}
 
 #ifndef CFG_WITH_PAGER
-	DMSG("PAGEABLE: %p - %p", ai.va, ai.va & ~SMALL_PAGE_MASK);
+	DMSG("Page fault at: %p - %p", ai.va, ai.va & ~SMALL_PAGE_MASK);
 #define L1_XLAT_ADDRESS_SHIFT 30
 #define TABLE_DESC 0x3
 #define L2_SHIFT 21
