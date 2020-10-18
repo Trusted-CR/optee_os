@@ -207,22 +207,26 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 				// Allocate the required number of VMA area structs
 				// size - 1 as the first entry is "pages_id": 1, checkout pagemap-*.txt
 				// i += 4 to skip the first entry.
-				checkpoint->pagemap_entry_count = tokens[++i].size - 1; i+=4;
-				checkpoint->pagemap_entries = malloc(sizeof(struct criu_pagemap_entry) * checkpoint->pagemap_entry_count);
+				int pagemap_entry_count = tokens[++i].size - 1; i+=4;
 
 				// Parse all pagemap entries
-				for(int y = 0; y < checkpoint->pagemap_entry_count; y++, i += (tokens[i].size * 2) + 1) {
+				for(int y = 0; y < pagemap_entry_count; y++, i += (tokens[i].size * 2) + 1) {
 					if(tokens[i].size == 3) {
 						// Parse the address, number of pages and initialize the flags.
-						checkpoint->pagemap_entries[y].vaddr    = strtoul(json + tokens[i+2].start, NULL, 16);
-						checkpoint->pagemap_entries[y].nr_pages = strtoul(json + tokens[i+4].start, NULL, 10);
-						checkpoint->pagemap_entries[y].flags    = 0;
+						struct criu_pagemap_entry * entry = malloc(sizeof(struct criu_pagemap_entry));
+						entry->vaddr_start = strtoul(json + tokens[i+2].start, NULL, 16);
+						entry->nr_pages    = strtoul(json + tokens[i+4].start, NULL, 10);
+						entry->vaddr_end   = entry->vaddr_start +
+											 entry->nr_pages * SMALL_PAGE_SIZE;
+						entry->flags       = 0;
 						
 						// Parse the flags
 						if(sstrstr(json + tokens[i+6].start, "PE_PRESENT", tokens[i+6].end - tokens[i+6].start) != NULL)
-							checkpoint->pagemap_entries[y].flags |= PE_PRESENT;
+							entry->flags |= PE_PRESENT;
 						if(sstrstr(json + tokens[i+6].start, "PE_LAZY", tokens[i+6].end - tokens[i+6].start) != NULL)
-							checkpoint->pagemap_entries[y].flags |= PE_LAZY;
+							entry->flags |= PE_LAZY;
+
+						TAILQ_INSERT_TAIL(&checkpoint->pagemap_entries, entry, link);
 					}
 				}
 
@@ -326,8 +330,8 @@ static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * s
 }
 
 void copy_pagemap_entry(struct criu_pagemap_entry * entry, void * buffer) {
-	if(entry != NULL && entry->vaddr != NULL)
-		memcpy((void *)entry->vaddr, buffer, entry->nr_pages * SMALL_PAGE_SIZE);
+	if(entry != NULL && entry->vaddr_start != NULL)
+		memcpy((void *)entry->vaddr_start, buffer, entry->nr_pages * SMALL_PAGE_SIZE);
 }
 
 void copy_vm_area_data(struct criu_vm_area * area) {
@@ -351,6 +355,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	struct checkpoint_file * checkpoint_file_var = binaryDataInformation->memref.buffer;
 	struct criu_checkpoint checkpoint = {};
+	TAILQ_INIT(&checkpoint.pagemap_entries);
+
 	if(!parse_checkpoint_core(&checkpoint, binaryData->memref.buffer + checkpoint_file_var[CORE_FILE].buffer_index, checkpoint_file_var[CORE_FILE].file_size)) {
 		DMSG("Checkpoint file core-*.img file is not valid.");
 		return TEE_ERROR_BAD_FORMAT;
@@ -408,13 +414,13 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	}
 
 	uint32_t pages_file_index = 0;
-	struct criu_pagemap_entry * entry = checkpoint.pagemap_entries;
-	for(int i = 0; i < checkpoint.pagemap_entry_count; i++) {
-		copy_pagemap_entry(&entry[i], 
+	struct criu_pagemap_entry * entry = NULL;
+	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
+		copy_pagemap_entry(entry, 
 				 binaryData->memref.buffer 								// Data buffer
 				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
 				+ SMALL_PAGE_SIZE * pages_file_index);					// Plus offset of the entry
-		pages_file_index += entry[i].nr_pages;
+		pages_file_index += entry->nr_pages;
 	}
 
 #ifdef CRIU_TEST_RETURNING
@@ -459,8 +465,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	if(checkpoint.vm_areas != NULL)
 		free(checkpoint.vm_areas);
 	// Free all allocated criu_pagemap_entry structs
-	if(checkpoint.pagemap_entries != NULL)
-		free(checkpoint.pagemap_entries);
+	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
+		free(entry);
+	}
 	
 	cleanup_allocations(s, utc);
 
