@@ -561,37 +561,46 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 		struct criu_vm_area * vm_areas;
 		for(int i = 0; i < checkpoint->vm_area_count; i++) {
 			if((checkpoint->vm_areas[i].vm_start <= ai.va) && (ai.va <= checkpoint->vm_areas[i].vm_end)) {
-				DMSG("Found!");
-				DMSG("Area: %p - %p", checkpoint->vm_areas[i].vm_start, checkpoint->vm_areas[i].vm_end);
+				DMSG("Marking area: %p - %p as dirty", checkpoint->vm_areas[i].vm_start, checkpoint->vm_areas[i].vm_end);
+				checkpoint->vm_areas[i].dirty = true;
+
 				int idx = ai.va >> L1_XLAT_ADDRESS_SHIFT;
 
+				// Remap the corresponding table entries as writable.
 				struct core_mmu_map_l1_entry * l1_entry = NULL;
 				TAILQ_FOREACH(l1_entry, &ctx->uctx.map.l1_entries, link) {
 					if(idx == l1_entry->idx) {						
-						void * l2_table = (uint64_t) phys_to_virt(l1_entry->table, MEM_AREA_TEE_RAM) & ~((uint64_t)TABLE_DESC);
+						uint64_t * l2_table = (uint64_t) phys_to_virt(l1_entry->table, MEM_AREA_TEE_RAM) & ~((uint64_t)TABLE_DESC);
 						uint64_t l2_va_base = ((uint64_t) l1_entry->idx << L1_XLAT_ADDRESS_SHIFT);
-						int l2_idx = (ai.va - l2_va_base) >> L2_SHIFT; // or find a way to call mmu_va_idx function
+						uint64_t l2_idx = (ai.va - l2_va_base) >> L2_SHIFT; // or find a way to call mmu_va_idx function
 
 						uint64_t * l3_table = (uint64_t) phys_to_virt(((uint64_t *)l2_table)[l2_idx], MEM_AREA_TEE_RAM) & ~((uint64_t)TABLE_DESC);
 						uint64_t l3_va_base = ((uint64_t) l2_idx << L2_SHIFT) + l2_va_base;
 						uint64_t l3_idx_start = ((ai.va - l3_va_base) >> L3_SHIFT) - 1;
 						uint64_t l3_idx_end = (checkpoint->vm_areas[i].vm_end - l3_va_base >> L3_SHIFT) - 1;
+
+						uint32_t prot = 0;
+						paddr_t pa;
 						
 						for(int i = l3_idx_start; i <= l3_idx_end; i++) {
-							DMSG("l3_true[%d]: %p", i, l3_table[i]);
+							// Get the current protection bits and physical address
+							core_mmu_get_entry_primitive(l3_table, 3, i, &pa, &prot);
+							// Add and set the write bit
+							core_mmu_set_entry_primitive(l3_table, 3, i, pa, prot | TEE_MATTR_UW);
+							
+							// Sync table update
+							dsb_ishst();
 						}
-						checkpoint->vm_areas[i].dirty = true;
-
 						break;
 					}
 				}
 
-				DMSG("original prot: %d", checkpoint->vm_areas[i].protection & TEE_MATTR_UW);
+				break;
 			} 
 		}
 	}
 
-	panic("Let's call it a quit");
+	// panic("Let's call it a quit");
 #else
 		thread_kernel_save_vfp();
 		handled = tee_pager_handle_fault(&ai);
