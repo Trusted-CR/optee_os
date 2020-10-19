@@ -173,22 +173,7 @@ struct thread_svc_regs {
 struct thread_svc_regs {
 	uint64_t elr;
 	uint64_t spsr;
-	uint64_t x0;	/* r0_usr */
-	uint64_t x1;	/* r1_usr */
-	uint64_t x2;	/* r2_usr */
-	uint64_t x3;	/* r3_usr */
-	uint64_t x4;	/* r4_usr */
-	uint64_t x5;	/* r5_usr */
-	uint64_t x6;	/* r6_usr */
-	uint64_t x7;	/* r7_usr */
-	uint64_t x8;	/* r8_usr */
-	uint64_t x9;	/* r9_usr */
-	uint64_t x10;	/* r10_usr */
-	uint64_t x11;	/* r11_usr */
-	uint64_t x12;	/* r12_usr */
-	uint64_t x13;	/* r13/sp_usr */
-	uint64_t x14;	/* r14/lr_usr */
-	uint64_t x30;
+	uint64_t x[31];
 	uint64_t sp_el0;
 	uint64_t pad;
 } __aligned(16);

@@ -192,10 +192,10 @@ static void get_scn_max_args(struct thread_svc_regs *regs, size_t *scn,
 {
 	if (((regs->spsr >> SPSR_MODE_RW_SHIFT) & SPSR_MODE_RW_MASK) ==
 	     SPSR_MODE_RW_32) {
-		*scn = regs->x7;
-		*max_args = regs->x6;
+		*scn = regs->x[7];
+		*max_args = regs->x[6];
 	} else {
-		*scn = regs->x8;
+		*scn = regs->x[8];
 		*max_args = 0;
 	}
 }
@@ -211,7 +211,7 @@ static void set_svc_retval(struct thread_svc_regs *regs, uint32_t ret_val)
 #ifdef ARM64
 static void set_svc_retval(struct thread_svc_regs *regs, uint64_t ret_val)
 {
-	regs->x0 = ret_val;
+	regs->x[0] = ret_val;
 }
 #endif /*ARM64*/
 
@@ -258,9 +258,9 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				DMSG("syscall sys_exit handled");
 				scn = 0;
 			} else if (scn == 64) {
-				char temp_string[regs->x2+1];
-				memcpy(temp_string, regs->x1, regs->x2);
-				temp_string[regs->x2] = 0;
+				char temp_string[regs->x[2]+1];
+				memcpy(temp_string, regs->x[1], regs->x[2]);
+				temp_string[regs->x[2]] = 0;
 				DMSG("syscall write handled: %s", temp_string);
 
 				set_svc_retval(regs, 0);
@@ -269,7 +269,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				checkpoint->entry_addr = regs->elr;
 				// Checkpoint the stack pointer
 				checkpoint->stack_addr = regs->sp_el0;
-				
+
 				// Checkpoint back tpidr_el0
 				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->tpidr_el0_addr));
 
@@ -290,10 +290,11 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				if(!vfp_enabled)
 					vfp_disable();
 
+				// Temporarily to test returning to the normal world, otherwise it would keep running
 				return TEE_SCN_RETURN;
 				return true;
 			} else if(scn == 101) {
-				uint64_t * s = regs->x0;
+				uint64_t * s = regs->x[0];
 				DMSG("syscall nanosleep handled: %llu seconds", *s);
 				mdelay(*s * 1000);
 				set_svc_retval(regs, 0);
@@ -431,13 +432,13 @@ static void save_panic_stack(struct thread_svc_regs *regs)
 
 	if (tee_mmu_check_access_rights(&utc->uctx, TEE_MEMORY_ACCESS_READ |
 					TEE_MEMORY_ACCESS_WRITE,
-					(uaddr_t)regs->x1,
+					(uaddr_t)regs->x[1],
 					utc->is_32bit ?
 					TA32_CONTEXT_MAX_SIZE :
 					TA64_CONTEXT_MAX_SIZE)) {
 		TAMSG_RAW("");
 		TAMSG_RAW("Can't unwind invalid user stack 0x%" PRIxUA,
-				(uaddr_t)regs->x1);
+				(uaddr_t)regs->x[1]);
 		return;
 	}
 
@@ -446,9 +447,9 @@ static void save_panic_stack(struct thread_svc_regs *regs)
 	tsd->abort_va = 0;
 
 	if (utc->is_32bit)
-		save_panic_regs_a32_ta(tsd, (uint32_t *)regs->x1);
+		save_panic_regs_a32_ta(tsd, (uint32_t *)regs->x[1]);
 	else
-		save_panic_regs_a64_ta(tsd, (uint64_t *)regs->x1);
+		save_panic_regs_a64_ta(tsd, (uint64_t *)regs->x[1]);
 }
 #else /* CFG_UNWIND */
 static void save_panic_stack(struct thread_svc_regs *regs __unused)
@@ -475,8 +476,8 @@ uint32_t tee_svc_sys_return_helper(uint32_t ret, bool panic,
 	regs->r2 = panic_code;
 #endif
 #ifdef ARM64
-	regs->x1 = panic;
-	regs->x2 = panic_code;
+	regs->x[1] = panic;
+	regs->x[2] = panic_code;
 #endif
 
 	return ret;
