@@ -465,6 +465,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		// DMSG("New values vregs[%d]: %lu", i, checkpoint.vregs[i]);
 	// }
 
+	// DMSG("Return instruction: %p", checkpoint.entry_addr);
+
 	// Free all allocated criu_vm_area structs
 	if(checkpoint.vm_areas != NULL)
 		free(checkpoint.vm_areas);

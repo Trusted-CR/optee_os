@@ -265,6 +265,9 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 				set_svc_retval(regs, 0);
 
+				// Checkpoint the program counter
+				checkpoint->entry_addr = regs->elr;
+				
 				// Checkpoint back tpidr_el0
 				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->tpidr_el0_addr));
 
