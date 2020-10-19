@@ -31,15 +31,19 @@ struct criu_pagemap_entry {
 
 TAILQ_HEAD(criu_pagemap_entries, criu_pagemap_entry);
 
-struct criu_checkpoint {
-	struct criu_vm_area * vm_areas;
-	uint32_t vm_area_count;
-	struct criu_pagemap_entries pagemap_entries;
+struct criu_checkpoint_regs {
 	uint64_t vregs[64];
 	uint64_t regs[31];
 	uint64_t entry_addr;
 	uint64_t stack_addr;
 	uint64_t tpidr_el0_addr;
+};
+
+struct criu_checkpoint {
+	struct criu_vm_area * vm_areas;
+	uint32_t vm_area_count;
+	struct criu_pagemap_entries pagemap_entries;
+	struct criu_checkpoint_regs regs;
 };
 
 enum criu_status_bits {

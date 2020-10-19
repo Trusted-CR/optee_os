@@ -82,28 +82,28 @@ static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * js
 		if (jsoneq(json, &tokens[i], "regs") == 0) { 
 			if(tokens[i+1].type == JSMN_ARRAY) {
 				for(int y = 0; y < tokens[i+1].size && (y < sizeof(checkpoint->regs)); y++) {
-					checkpoint->regs[y] = strtoul(json + tokens[i+y+2].start, NULL, 16);
+					checkpoint->regs.regs[y] = strtoul(json + tokens[i+y+2].start, NULL, 16);
 				}
 			}
 		// Parse all the VFP registers
 		} else if(jsoneq(json, &tokens[i], "vregs") == 0) { 
 			if(tokens[i+1].type == JSMN_ARRAY) {
-				for(int y = 0; y < tokens[i+1].size && (y < sizeof(checkpoint->vregs)); y++) {
-					checkpoint->vregs[y] = strtoul(json + tokens[i+y+2].start, NULL, 10);
+				for(int y = 0; y < tokens[i+1].size && (y < sizeof(checkpoint->regs.vregs)); y++) {
+					checkpoint->regs.vregs[y] = strtoul(json + tokens[i+y+2].start, NULL, 10);
 				}
 			}
 		// Parse the checkpoint program counter
 		} else if(jsoneq(json, &tokens[i], "pc") == 0) { 
 			if(tokens[i+1].type == JSMN_STRING)
-				checkpoint->entry_addr = strtoul(json + tokens[i+1].start, NULL, 16);
+				checkpoint->regs.entry_addr = strtoul(json + tokens[i+1].start, NULL, 16);
 		// Parse the checkpoint stack pointer
 		} else if(jsoneq(json, &tokens[i], "sp") == 0) { 
 			if(tokens[i+1].type == JSMN_STRING)
-				checkpoint->stack_addr = strtoul(json + tokens[i+1].start, NULL, 16);	
+				checkpoint->regs.stack_addr = strtoul(json + tokens[i+1].start, NULL, 16);	
 		// Parse the TPIDR_EL0 address
 		} else if(jsoneq(json, &tokens[i], "tls") == 0) { 
 			if(tokens[i+1].type == JSMN_PRIMITIVE)
-				checkpoint->tpidr_el0_addr = strtoul(json + tokens[i+1].start, NULL, 10);
+				checkpoint->regs.tpidr_el0_addr = strtoul(json + tokens[i+1].start, NULL, 10);
 		}
 	}
 
@@ -381,7 +381,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	utc->uctx.checkpoint = &checkpoint;
 
-	set_vfp_registers(checkpoint.vregs, &utc->uctx.vfp);
+	set_vfp_registers(checkpoint.regs.vregs, &utc->uctx.vfp);
 	
 	tee_ta_push_current_session(s);
 
@@ -393,8 +393,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		}
 	}
 
-	utc->ldelf_stack_ptr = checkpoint.stack_addr;
-	utc->entry_func = checkpoint.entry_addr;
+	utc->ldelf_stack_ptr = checkpoint.regs.stack_addr;
+	utc->entry_func = checkpoint.regs.entry_addr;
 
 	DMSG("\n\nCRIU - ALLOCATION COMPLETED!");
 
@@ -456,21 +456,21 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	user_mode_ctx_print_mappings(&utc->uctx);
 
-	DMSG("\n\nCRIU - RUN! Entry address: %p", (void *) checkpoint.entry_addr);
+	DMSG("\n\nCRIU - RUN! Entry address: %p", (void *) checkpoint.regs.entry_addr);
 	
-	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, checkpoint.tpidr_el0_addr, checkpoint.regs);
+	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, checkpoint.regs.tpidr_el0_addr, checkpoint.regs.regs);
 	tee_ta_pop_current_session();
 
 	// for(int i = 0; i < 30; i++) {
-	// 	DMSG("New values regs[%d]: %p", i, checkpoint.regs[i]);
+	// 	DMSG("New values regs[%d]: %p", i, checkpoint.regs.regs[i]);
 	// }
 
 	// for(int i = 0; i < 64; i++) {
-		// DMSG("New values vregs[%d]: %lu", i, checkpoint.vregs[i]);
+		// DMSG("New values vregs[%d]: %lu", i, checkpoint.regs.vregs[i]);
 	// }
 
-	// DMSG("Return instruction: %p", checkpoint.entry_addr);
-	// DMSG("Return stack-pointer: %p", checkpoint.stack_addr);
+	// DMSG("Return instruction: %p", checkpoint.regs.entry_addr);
+	// DMSG("Return stack-pointer: %p", checkpoint.regs.stack_addr);
 
 	// Free all allocated criu_vm_area structs
 	if(checkpoint.vm_areas != NULL)

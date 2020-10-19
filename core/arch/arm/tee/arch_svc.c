@@ -267,16 +267,16 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 				// Checkpoint all registers
 				for(int i = 0; i < 31; i++) {
-					checkpoint->regs[i] = regs->x[i];
+					checkpoint->regs.regs[i] = regs->x[i];
 				}
 
 				// Checkpoint the program counter
-				checkpoint->entry_addr = regs->elr;
+				checkpoint->regs.entry_addr = regs->elr;
 				// Checkpoint the stack pointer
-				checkpoint->stack_addr = regs->sp_el0;
+				checkpoint->regs.stack_addr = regs->sp_el0;
 
 				// Checkpoint back tpidr_el0
-				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->tpidr_el0_addr));
+				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
 
 				// Temporarily enable vfp to retrieve registers
 				bool vfp_enabled = true;
@@ -289,7 +289,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				}
 
 				// Store vfp registers
-				vfp_save_extension_regs(checkpoint->vregs);
+				vfp_save_extension_regs(checkpoint->regs.vregs);
 
 				// vfp was disabled beforehand, so disable it again.
 				if(!vfp_enabled)
