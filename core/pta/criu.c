@@ -461,6 +461,10 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, checkpoint.tpidr_el0_addr, checkpoint.regs);
 	tee_ta_pop_current_session();
 
+	// for(int i = 0; i < 64; i++) {
+		// DMSG("New values vregs[%d]: %lu", i, checkpoint.vregs[i]);
+	// }
+
 	// Free all allocated criu_vm_area structs
 	if(checkpoint.vm_areas != NULL)
 		free(checkpoint.vm_areas);
