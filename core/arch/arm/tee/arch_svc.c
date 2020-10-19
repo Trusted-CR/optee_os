@@ -265,6 +265,11 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 				set_svc_retval(regs, 0);
 
+				// Checkpoint all registers
+				for(int i = 0; i < 31; i++) {
+					checkpoint->regs[i] = regs->x[i];
+				}
+
 				// Checkpoint the program counter
 				checkpoint->entry_addr = regs->elr;
 				// Checkpoint the stack pointer
