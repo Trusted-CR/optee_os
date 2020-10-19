@@ -595,10 +595,10 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 				}
 
 				bool page_entry_found = false;
-				struct criu_pagemap_entry * entry = NULL;
+				struct criu_pagemap_entry_tracker * entry = NULL;
 				TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
-					if(entry->vaddr_start <= dirty_address &&
-					   entry->vaddr_end   >= dirty_address) {
+					if(entry->entry.vaddr_start <= dirty_address &&
+					   entry->entry.vaddr_start + (entry->entry.nr_pages * SMALL_PAGE_SIZE)   >= dirty_address) {
 						entry->dirty = true;
 						page_entry_found = true;
 						break;
@@ -606,10 +606,9 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 				}
 
 				if(!page_entry_found) {
-					entry = calloc(1, sizeof(struct criu_pagemap_entry));
-					entry->vaddr_start = dirty_address;
-					entry->vaddr_end = dirty_address;
-					entry->nr_pages = 1;
+					entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
+					entry->entry.vaddr_start = dirty_address;
+					entry->entry.nr_pages = 1;
 					entry->dirty = true;
 
 					TAILQ_INSERT_TAIL(&checkpoint->pagemap_entries, entry, link);

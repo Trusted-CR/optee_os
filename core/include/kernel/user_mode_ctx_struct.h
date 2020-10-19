@@ -22,14 +22,17 @@ struct criu_vm_area {
 
 struct criu_pagemap_entry {
 	vaddr_t vaddr_start;
-	vaddr_t vaddr_end;
 	unsigned long nr_pages;
 	uint8_t flags;
+};
+
+struct criu_pagemap_entry_tracker{
+	struct criu_pagemap_entry entry;
 	bool dirty;
 	TAILQ_ENTRY(criu_pagemap_entry) link;
 };
 
-TAILQ_HEAD(criu_pagemap_entries, criu_pagemap_entry);
+TAILQ_HEAD(criu_pagemap_entries, criu_pagemap_entry_tracker);
 
 struct criu_checkpoint_regs {
 	uint64_t vregs[64];
@@ -37,6 +40,11 @@ struct criu_checkpoint_regs {
 	uint64_t entry_addr;
 	uint64_t stack_addr;
 	uint64_t tpidr_el0_addr;
+};
+
+struct criu_checkpoint_dirty_pages {
+	uint32_t dirty_page_count;
+	uint32_t offset;
 };
 
 struct criu_checkpoint {

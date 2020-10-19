@@ -213,18 +213,16 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 				for(int y = 0; y < pagemap_entry_count; y++, i += (tokens[i].size * 2) + 1) {
 					if(tokens[i].size == 3) {
 						// Parse the address, number of pages and initialize the flags.
-						struct criu_pagemap_entry * entry = calloc(1, sizeof(struct criu_pagemap_entry));
-						entry->vaddr_start = strtoul(json + tokens[i+2].start, NULL, 16);
-						entry->nr_pages    = strtoul(json + tokens[i+4].start, NULL, 10);
-						entry->vaddr_end   = entry->vaddr_start +
-											 entry->nr_pages * SMALL_PAGE_SIZE;
-						entry->flags       = 0;
+						struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
+						entry->entry.vaddr_start = strtoul(json + tokens[i+2].start, NULL, 16);
+						entry->entry.nr_pages    = strtoul(json + tokens[i+4].start, NULL, 10);
+						entry->entry.flags       = 0;
 						
 						// Parse the flags
 						if(sstrstr(json + tokens[i+6].start, "PE_PRESENT", tokens[i+6].end - tokens[i+6].start) != NULL)
-							entry->flags |= PE_PRESENT;
+							entry->entry.flags |= PE_PRESENT;
 						if(sstrstr(json + tokens[i+6].start, "PE_LAZY", tokens[i+6].end - tokens[i+6].start) != NULL)
-							entry->flags |= PE_LAZY;
+							entry->entry.flags |= PE_LAZY;
 
 						TAILQ_INSERT_TAIL(&checkpoint->pagemap_entries, entry, link);
 					}
@@ -329,9 +327,9 @@ static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * s
 	}
 }
 
-void copy_pagemap_entry(struct criu_pagemap_entry * entry, void * buffer) {
-	if(entry != NULL && entry->vaddr_start != NULL)
-		memcpy((void *)entry->vaddr_start, buffer, entry->nr_pages * SMALL_PAGE_SIZE);
+void copy_pagemap_entry(struct criu_pagemap_entry_tracker * entry, void * buffer) {
+	if(entry != NULL && entry->entry.vaddr_start != NULL)
+		memcpy((void *)entry->entry.vaddr_start, buffer, entry->entry.nr_pages * SMALL_PAGE_SIZE);
 }
 
 void copy_vm_area_data(struct criu_vm_area * area) {
@@ -414,13 +412,13 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	}
 
 	uint32_t pages_file_index = 0;
-	struct criu_pagemap_entry * entry = NULL;
+	struct criu_pagemap_entry_tracker * entry = NULL;
 	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
 		copy_pagemap_entry(entry, 
 				 binaryData->memref.buffer 								// Data buffer
 				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
 				+ SMALL_PAGE_SIZE * pages_file_index);					// Plus offset of the entry
-		pages_file_index += entry->nr_pages;
+		pages_file_index += entry->entry.nr_pages;
 	}
 
 #ifdef CRIU_TEST_RETURNING
@@ -459,30 +457,45 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	DMSG("\n\nCRIU - RUN! Entry address: %p", (void *) checkpoint.regs.entry_addr);
 	
 	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, checkpoint.regs.tpidr_el0_addr, checkpoint.regs.regs);
+
+	DMSG("CRIU - COPYING DATA BACK");
+
+	long index = 0;
+	memcpy(binaryData->memref.buffer, &checkpoint.regs, sizeof(struct criu_checkpoint_regs));
+	index += sizeof(struct criu_checkpoint_regs);
+
+	struct criu_checkpoint_dirty_pages * dirty_pages_info = binaryData->memref.buffer + index;
+	index += sizeof(struct criu_checkpoint_dirty_pages);
+	
+	dirty_pages_info->dirty_page_count = 0;
+	
+	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
+		if(entry->dirty) {
+			DMSG("GOT A DIRTY ENTRY HERE: %p - %p - %d", entry->entry.vaddr_start, entry->entry.vaddr_start + (entry->entry.nr_pages * SMALL_PAGE_SIZE), entry->dirty);
+
+			dirty_pages_info->dirty_page_count++;
+			memcpy(binaryData->memref.buffer + index, &entry->entry, sizeof(struct criu_pagemap_entry));
+			index += sizeof(struct criu_pagemap_entry);
+		}
+	}
+
+	dirty_pages_info->offset = index;
+	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
+		if(entry->dirty) {
+			memcpy(binaryData->memref.buffer + index, entry->entry.vaddr_start, entry->entry.nr_pages * SMALL_PAGE_SIZE);
+			index += entry->entry.nr_pages * SMALL_PAGE_SIZE;
+		}
+
+		// Free all allocated criu_pagemap_entry structs
+		free(entry);
+	}
+
 	tee_ta_pop_current_session();
 
-	// for(int i = 0; i < 30; i++) {
-	// 	DMSG("New values regs[%d]: %p", i, checkpoint.regs.regs[i]);
-	// }
-
-	// for(int i = 0; i < 64; i++) {
-		// DMSG("New values vregs[%d]: %lu", i, checkpoint.regs.vregs[i]);
-	// }
-
-	// DMSG("Return instruction: %p", checkpoint.regs.entry_addr);
-	// DMSG("Return stack-pointer: %p", checkpoint.regs.stack_addr);
 
 	// Free all allocated criu_vm_area structs
 	if(checkpoint.vm_areas != NULL)
 		free(checkpoint.vm_areas);
-	// Free all allocated criu_pagemap_entry structs
-	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
-		if(entry->dirty) {
-			DMSG("GOT A DIRTY ENTRY HERE: %p - %p - %d", entry->vaddr_start, entry->vaddr_end, entry->dirty);
-		}
-
-		free(entry);
-	}
 	
 	cleanup_allocations(s, utc);
 
