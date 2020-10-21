@@ -22,6 +22,7 @@ struct criu_vm_area {
 
 struct criu_pagemap_entry {
 	vaddr_t vaddr_start;
+	unsigned long file_page_index;
 	unsigned long nr_pages;
 	uint8_t flags;
 };

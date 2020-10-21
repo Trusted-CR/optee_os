@@ -209,6 +209,7 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 				// i += 4 to skip the first entry.
 				int pagemap_entry_count = tokens[++i].size - 1; i+=4;
 
+				int file_index = 0;
 				// Parse all pagemap entries
 				for(int y = 0; y < pagemap_entry_count; y++, i += (tokens[i].size * 2) + 1) {
 					if(tokens[i].size == 3) {
@@ -217,6 +218,7 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 						entry->entry.vaddr_start = strtoul(json + tokens[i+2].start, NULL, 16);
 						entry->entry.nr_pages    = strtoul(json + tokens[i+4].start, NULL, 10);
 						entry->entry.flags       = 0;
+						entry->entry.file_page_index = file_index;
 						
 						// Parse the flags
 						if(sstrstr(json + tokens[i+6].start, "PE_PRESENT", tokens[i+6].end - tokens[i+6].start) != NULL)
@@ -225,6 +227,8 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 							entry->entry.flags |= PE_LAZY;
 
 						TAILQ_INSERT_TAIL(&checkpoint->pagemap_entries, entry, link);
+
+						file_index += entry->entry.nr_pages;
 					}
 				}
 
