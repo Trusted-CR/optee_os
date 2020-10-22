@@ -265,43 +265,47 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 				set_svc_retval(regs, 0);
 
-				// Checkpoint all registers
-				for(int i = 0; i < 31; i++) {
-					checkpoint->regs.regs[i] = regs->x[i];
+				static int number_of_times = 3;
+				if(number_of_times-- <= 0) {
+					DMSG("ret");
+					// Checkpoint all registers
+					for(int i = 0; i < 31; i++) {
+						checkpoint->regs.regs[i] = regs->x[i];
+					}
+
+					// Checkpoint the program counter
+					checkpoint->regs.entry_addr = regs->elr;
+					// Checkpoint the stack pointer
+					checkpoint->regs.stack_addr = regs->sp_el0;
+
+					// Checkpoint back tpidr_el0
+					asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
+
+					// Temporarily enable vfp to retrieve registers
+					bool vfp_enabled = true;
+					if(!vfp_is_enabled()) {
+						// To restore the original vfp state after reading the registers.
+						vfp_enabled = false;
+						
+						// Temporarily enable to retrieve registers.
+						vfp_enable();
+					}
+
+					// Store vfp registers
+					vfp_save_extension_regs(checkpoint->regs.vregs);
+
+					// vfp was disabled beforehand, so disable it again.
+					if(!vfp_enabled)
+						vfp_disable();
+
+					// Temporarily to test returning to the normal world, otherwise it would keep running
+					return TEE_SCN_RETURN;
 				}
-
-				// Checkpoint the program counter
-				checkpoint->regs.entry_addr = regs->elr;
-				// Checkpoint the stack pointer
-				checkpoint->regs.stack_addr = regs->sp_el0;
-
-				// Checkpoint back tpidr_el0
-				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
-
-				// Temporarily enable vfp to retrieve registers
-				bool vfp_enabled = true;
-				if(!vfp_is_enabled()) {
-					// To restore the original vfp state after reading the registers.
-					vfp_enabled = false;
-					
-					// Temporarily enable to retrieve registers.
-					vfp_enable();
-				}
-
-				// Store vfp registers
-				vfp_save_extension_regs(checkpoint->regs.vregs);
-
-				// vfp was disabled beforehand, so disable it again.
-				if(!vfp_enabled)
-					vfp_disable();
-
-				// Temporarily to test returning to the normal world, otherwise it would keep running
-				return TEE_SCN_RETURN;
 				return true;
 			} else if(scn == 101) {
 				uint64_t * s = regs->x[0];
 				DMSG("syscall nanosleep handled: %llu seconds", *s);
-				mdelay(*s * 1000);
+				// mdelay(*s * 1000);
 				set_svc_retval(regs, 0);
 				return true;
 			}

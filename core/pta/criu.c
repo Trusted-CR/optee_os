@@ -21,6 +21,7 @@
 
 #define CRIU_LOAD_CHECKPOINT	0
 
+// #define CRIU_TEST_RETURNING
 #ifdef CRIU_TEST_RETURNING
 // This is test data, consisting of instructions that only executes a sys_exit syscall
 const uint8_t test_code_exec_sys_exit[4096] __aligned(4096) = { 
