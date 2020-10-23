@@ -802,7 +802,8 @@ TEE_Result tee_pager_add_um_area(struct user_mode_ctx *uctx, vaddr_t base,
 	 */
 	tee_pager_assign_um_tables(uctx);
 
-	TAILQ_INIT(&uctx->map.l1_entries);
+	if(uctx->map.l1_entries.tqh_last == NULL)
+		TAILQ_INIT(&uctx->map.l1_entries);
 	uctx->map.asid = 1;
 
 	static int i = 0;

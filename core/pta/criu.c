@@ -269,7 +269,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 		.vm_end			= 0x400dd000,
 		.original_data	= checkpointedBinary->memref.buffer,
 		.offset 		= 0,
-		.protection		= TEE_MATTR_PRW
+		.protection		= TEE_MATTR_PRW | TEE_MATTR_URX
 	};
 
 	struct criu_vm_area stack = {
@@ -381,18 +381,18 @@ static TEE_Result load_checkpoint_data(TEE_Param * checkpointedBinary, TEE_Param
 	DMSG("CRIU - DATA COPIED OVER!\n\n");
 
 
-	DMSG("\n\nCRIU - SET PROTECTION BITS");
-	res = criu_vm_set_prot(&utc->uctx, code.vm_start,
-			  ROUNDUP(code.vm_end - code.vm_start, SMALL_PAGE_SIZE),
-			  TEE_MATTR_URX);
-	if (res) {
-		DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
-		return res;
-	}
+	// DMSG("\n\nCRIU - SET PROTECTION BITS");
+	// res = criu_vm_set_prot(&utc->uctx, code.vm_start,
+	// 		  ROUNDUP(code.vm_end - code.vm_start, SMALL_PAGE_SIZE),
+	// 		  TEE_MATTR_URX);
+	// if (res) {
+	// 	DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
+	// 	return res;
+	// }
 
-	// dump_mmu_tables(&utc->uctx.map);
+	// // dump_mmu_tables(&utc->uctx.map);
 
-	DMSG("CRIU - PROTECTION BITS SET\n\n");
+	// DMSG("CRIU - PROTECTION BITS SET\n\n");
 
 	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, code.vm_start);
 

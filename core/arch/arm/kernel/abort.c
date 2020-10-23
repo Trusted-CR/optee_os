@@ -527,6 +527,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 	case FAULT_TYPE_IGNORE:
 		break;
 	case FAULT_TYPE_USER_TA_PANIC:
+		DMSG("ABORT AT PC %p - VA %p", ai.pc, ai.va);
 		DMSG("[abort] abort in User mode (TA will panic)");
 		save_abort_info_in_tsd(&ai);
 		vfp_disable();
