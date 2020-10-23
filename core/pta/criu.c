@@ -106,7 +106,7 @@ static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct criu_vm_area * ar
 	if(area == NULL)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	DMSG("\n\nCRIU - ALLOC: %p", (void *) area->vm_start);
+	DMSG("\n\nCRIU - ALLOC: %p - %p", (void *) area->vm_start, area->vm_end);
 	return criu_alloc_and_map_ldelf_fobj(utc, area->vm_end - area->vm_start,
 				       area->protection,
 				       &area->vm_start);

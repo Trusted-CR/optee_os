@@ -674,6 +674,30 @@ void core_mmu_create_user_map(struct user_mode_ctx *uctx,
 	map->asid = uctx->vm_info.asid;
 }
 
+bool core_mmu_set_l1(int idx, void * table) {
+	bool ret = false;
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
+
+	uint64_t ttbr = read_ttbr0_el1();
+	/* Clear ASID */
+	ttbr &= ~((uint64_t)TTBR_ASID_MASK << TTBR_ASID_SHIFT);
+	write_ttbr0_el1(ttbr);
+	isb();
+
+	uint64_t * orig = &get_prtn()->l1_tables[0][get_core_pos()][idx];
+	if(*orig == 0) {
+		*orig = table;
+		ret = true;
+	}
+	
+	dsb();	/* Make sure the write above is visible */
+	ttbr |= ((uint64_t)1 << TTBR_ASID_SHIFT);
+	write_ttbr0_el1(ttbr);
+
+	thread_unmask_exceptions(exceptions);
+	return ret;
+}
+
 bool core_mmu_find_table(struct mmu_partition *prtn, vaddr_t va,
 			 unsigned max_level,
 			 struct core_mmu_table_info *tbl_info)

@@ -102,6 +102,8 @@ CFG_DTB_MAX_SIZE ?= 0x100000
 endif
 
 ifeq ($(PLATFORM_FLAVOR),qemu_armv8a)
+CFG_WITH_PAGER=y
+CFG_PAGED_USER_TA=y
 CFG_TEE_CORE_NB_CORE = 4
 # [0e00.0000 0e0f.ffff] is reserved to early boot
 CFG_TZDRAM_START ?= 0x0e100000

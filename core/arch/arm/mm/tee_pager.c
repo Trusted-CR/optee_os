@@ -801,11 +801,37 @@ TEE_Result tee_pager_add_um_area(struct user_mode_ctx *uctx, vaddr_t base,
 	 * tables are registered in the upper table.
 	 */
 	tee_pager_assign_um_tables(uctx);
-	core_mmu_get_user_pgdir(&dir_info);
+
+	TAILQ_INIT(&uctx->map.l1_entries);
+	uctx->map.asid = 1;
+
+	static int i = 0;
 	TAILQ_FOREACH(area, uctx->areas, link) {
 		paddr_t pa;
 		size_t idx;
 		uint32_t attr;
+
+		vaddr_t add = area->base;
+		uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
+		if(core_mmu_find_table(NULL, add, 2, &dir_info)) {
+			if(dir_info.va_base == NULL) {
+				struct core_mmu_map_l1_entry * e = calloc(1, sizeof(struct core_mmu_map_l1_entry));
+				e->idx = area->base >> 30;
+				void * l2_table = get_l2_table(i++); 
+				memset(l2_table, 0, PGT_SIZE);
+
+				e->table = virt_to_phys(l2_table) | 0x3; // TABLE_DESC;
+
+				TAILQ_INSERT_TAIL(&uctx->map.l1_entries, e, link);
+
+				core_mmu_set_l1(e->idx, (void *) e->table);
+
+				// Update it again with the new allocated entry.
+				core_mmu_find_table(NULL, area->base, 2, &dir_info);
+			}
+		}
+
+		thread_unmask_exceptions(exceptions);
 
 		idx = core_mmu_va2idx(&dir_info, area->pgt->vabase);
 		core_mmu_get_entry(&dir_info, idx, &pa, &attr);

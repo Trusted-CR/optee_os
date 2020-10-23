@@ -40,7 +40,7 @@ struct pgt {
 #if CFG_NUM_THREADS < 2
 #define PGT_CACHE_SIZE	4
 #else
-#define PGT_CACHE_SIZE 10
+#define PGT_CACHE_SIZE 20
 // #define PGT_CACHE_SIZE	ROUNDUP(CFG_NUM_THREADS * 2, PGT_NUM_PGT_PER_PAGE)
 #endif
 
