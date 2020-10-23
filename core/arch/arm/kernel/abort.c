@@ -540,6 +540,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 #endif
 	case FAULT_TYPE_PAGEABLE:
 	default:
+		DMSG("PAGE FAULT DETECTED: pc %p\tva %p", ai.pc, ai.va);
 		if (thread_get_id_may_fail() < 0) {
 			abort_print_error(&ai);
 			panic("abort outside thread context");
