@@ -1914,7 +1914,7 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 	struct pgt_cache *pgt_cache = &thread_get_tsd()->pgt_cache;
 	struct pgt *pgt = NULL;
 	int i = 0;
-	pgt_alloc_regions(pgt_cache, &uctx->vm_info, uctx);
+	pgt_alloc_regions(pgt_cache, &uctx->vm_info, &uctx->ctx);
 	pgt = SLIST_FIRST(pgt_cache);
 
 #define L1_XLAT_ADDRESS_SHIFT  	30
