@@ -49,11 +49,11 @@ DEFINES
 	DEFINE(THREAD_SMC_ARGS_X0, offsetof(struct thread_smc_args, a0));
 	DEFINE(THREAD_SMC_ARGS_SIZE, sizeof(struct thread_smc_args));
 
-	DEFINE(THREAD_SVC_REG_X0, offsetof(struct thread_svc_regs, x0));
-	DEFINE(THREAD_SVC_REG_X2, offsetof(struct thread_svc_regs, x2));
-	DEFINE(THREAD_SVC_REG_X5, offsetof(struct thread_svc_regs, x5));
-	DEFINE(THREAD_SVC_REG_X6, offsetof(struct thread_svc_regs, x6));
-	DEFINE(THREAD_SVC_REG_X30, offsetof(struct thread_svc_regs, x30));
+	DEFINE(THREAD_SVC_REG_X0, offsetof(struct thread_svc_regs, x[0]));
+	DEFINE(THREAD_SVC_REG_X2, offsetof(struct thread_svc_regs, x[2]));
+	DEFINE(THREAD_SVC_REG_X5, offsetof(struct thread_svc_regs, x[5]));
+	DEFINE(THREAD_SVC_REG_X6, offsetof(struct thread_svc_regs, x[6]));
+	DEFINE(THREAD_SVC_REG_X30, offsetof(struct thread_svc_regs, x[30]));
 	DEFINE(THREAD_SVC_REG_ELR, offsetof(struct thread_svc_regs, elr));
 	DEFINE(THREAD_SVC_REG_SPSR, offsetof(struct thread_svc_regs, spsr));
 	DEFINE(THREAD_SVC_REG_SP_EL0, offsetof(struct thread_svc_regs, sp_el0));

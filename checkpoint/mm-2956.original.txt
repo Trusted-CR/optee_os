@@ -201,6 +201,16 @@
                     "fd": -1
                 },
                 {
+                    "start": "0x744d249000",
+                    "end": "0x744e054000",
+                    "pgoff": 0,
+                    "shmid": 0,
+                    "prot": "",
+                    "flags": "MAP_PRIVATE | MAP_ANON",
+                    "status": "VMA_AREA_REGULAR | VMA_ANON_PRIVATE",
+                    "fd": -1
+                },
+                {
                     "start": "0x744e054000",
                     "end": "0x744e056000",
                     "pgoff": 0,
@@ -282,7 +292,7 @@
                     "fd": -1
                 },
                 {
-                    "start": "0x7ffca45000",
+                    "start": "0x7ffca27000",
                     "end": "0x7ffca48000",
                     "pgoff": 0,
                     "shmid": 0,

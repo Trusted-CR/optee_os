@@ -453,6 +453,9 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 		if (is_vfp_fault(ai))
 			return FAULT_TYPE_USER_TA_VFP;
 #ifndef CFG_WITH_PAGER
+		if(core_mmu_get_fault_type(ai->fault_descr) == CORE_MMU_FAULT_WRITE_PERMISSION)
+			return FAULT_TYPE_PAGEABLE;
+
 		return FAULT_TYPE_USER_TA_PANIC;
 #endif
 	}
@@ -545,6 +548,81 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			abort_print_error(&ai);
 			panic("abort outside thread context");
 		}
+
+#ifndef CFG_WITH_PAGER
+#define L1_XLAT_ADDRESS_SHIFT 30
+#define TABLE_DESC 0x3
+#define L2_SHIFT 21
+#define L3_SHIFT 12
+	struct thread_specific_data *tsd = thread_get_tsd();
+	if(is_user_ta_ctx(tsd->ctx)) {
+		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
+		struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
+		
+		struct criu_vm_area * vm_areas;
+		for(int i = 0; i < checkpoint->vm_area_count; i++) {
+			if((checkpoint->vm_areas[i].vm_start <= ai.va) && (ai.va <= checkpoint->vm_areas[i].vm_end)) {
+				vaddr_t dirty_address = ai.va & ~SMALL_PAGE_MASK;
+
+				DMSG("Page fault - Marking page as dirty: %p", dirty_address);
+				checkpoint->vm_areas[i].dirty = true;
+
+				int idx = ai.va >> L1_XLAT_ADDRESS_SHIFT;
+
+				// Remap the corresponding table entries as writable.
+				struct core_mmu_map_l1_entry * l1_entry = NULL;
+				TAILQ_FOREACH(l1_entry, &ctx->uctx.map.l1_entries, link) {
+					if(idx == l1_entry->idx) {						
+						uint64_t * l2_table = (uint64_t) phys_to_virt(l1_entry->table, MEM_AREA_TEE_RAM) & ~((uint64_t)TABLE_DESC);
+						uint64_t l2_va_base = ((uint64_t) l1_entry->idx << L1_XLAT_ADDRESS_SHIFT);
+						uint64_t l2_idx = (ai.va - l2_va_base) >> L2_SHIFT; // or find a way to call mmu_va_idx function
+
+						uint64_t * l3_table = (uint64_t) phys_to_virt(((uint64_t *)l2_table)[l2_idx], MEM_AREA_TEE_RAM) & ~((uint64_t)TABLE_DESC);
+						uint64_t l3_va_base = ((uint64_t) l2_idx << L2_SHIFT) + l2_va_base;
+						uint64_t l3_idx = ((ai.va - l3_va_base) >> L3_SHIFT);
+
+						uint32_t prot = 0;
+						paddr_t pa;
+
+						// Get the current protection bits and physical address
+						core_mmu_get_entry_primitive(l3_table, 3, l3_idx, &pa, &prot);
+						// Add and set the write bit
+						core_mmu_set_entry_primitive(l3_table, 3, l3_idx, pa, prot | TEE_MATTR_UW);
+						
+						// Sync table update
+						dsb_ishst();
+						
+						break;
+					}
+				}
+
+				bool page_entry_found = false;
+				struct criu_pagemap_entry_tracker * entry = NULL;
+				TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
+					if(entry->entry.vaddr_start <= dirty_address &&
+					   entry->entry.vaddr_start + (entry->entry.nr_pages * SMALL_PAGE_SIZE)   >= dirty_address) {
+						entry->dirty = true;
+						page_entry_found = true;
+						break;
+					}// else if((entry->vaddr_start + SMALL_PAGE_SIZE) == )
+				}
+
+				if(!page_entry_found) {
+					entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
+					entry->entry.vaddr_start = dirty_address;
+					entry->entry.nr_pages = 1;
+					entry->dirty = true;
+
+					TAILQ_INSERT_TAIL(&checkpoint->pagemap_entries, entry, link);
+				}
+
+				break;
+			} 
+		}
+	}
+
+	// panic("Let's call it a quit");
+#else
 		thread_kernel_save_vfp();
 		handled = tee_pager_handle_fault(&ai);
 		thread_kernel_restore_vfp();
@@ -558,6 +636,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			vfp_disable();
 			handle_user_ta_panic(&ai);
 		}
+#endif
 		break;
 	}
 }

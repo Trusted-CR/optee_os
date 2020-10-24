@@ -618,7 +618,7 @@ LOCAL_FUNC el0_svc , :
 	ldp	x0, x1, [x1, #THREAD_CORE_LOCAL_X0]
 
 	/* Prepare the argument for the handler */
-	store_xregs sp, THREAD_SVC_REG_X0, 0, 14
+	store_xregs sp, THREAD_SVC_REG_X0, 0, 30
 	mrs	x0, elr_el1
 	mrs	x1, spsr_el1
 	store_xregs sp, THREAD_SVC_REG_ELR, 0, 1
