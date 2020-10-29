@@ -600,7 +600,37 @@ static struct tee_pager_area *find_uta_area(vaddr_t va)
 
 	if (!is_user_mode_ctx(ctx))
 		return NULL;
-	return find_area(to_user_mode_ctx(ctx)->areas, va);
+
+	struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
+	if(uctx->is_criu_checkpoint) {
+		DMSG("yup dealing with a checkpoint, check if it is already allocated");
+
+		struct criu_pagemap_entry_tracker * entry = NULL;
+		TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
+			if(va >= entry->entry.vaddr_start &&
+			   va <= entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
+				DMSG("Pagemap entry found! %p", entry->entry.vaddr_start);
+				return NULL;
+				break;
+			}
+		}
+
+		struct criu_vm_area * area = uctx->checkpoint->vm_areas;
+		for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
+			if(va >= area[i].vm_start &&
+			   va <= area[i].vm_end) {
+				DMSG("VM entry found! %p", area[i].vm_start);
+				return NULL;
+				break;
+			}
+		}
+
+		// find area first? to check if it already exists but is hidden?
+
+		return NULL;
+	} else {
+		return find_area(to_user_mode_ctx(ctx)->areas, va);
+	}
 }
 #else
 static struct tee_pager_area *find_uta_area(vaddr_t va __unused)

@@ -387,12 +387,12 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	tee_ta_push_current_session(s);
 
 	struct criu_vm_area * area = checkpoint.vm_areas;
-	for(int i = 0; i < checkpoint.vm_area_count; i++) {
-		if ((res = map_vm_area(utc, &area[i]))) {
-			DMSG("CRIU - ALLOC %p - %p failed: %p", area[i].vm_start, area[i].vm_end, res);
-			return res;
-		}
-	}
+	// for(int i = 0; i < checkpoint.vm_area_count; i++) {
+	// 	if ((res = map_vm_area(utc, &area[i]))) {
+	// 		DMSG("CRIU - ALLOC %p - %p failed: %p", area[i].vm_start, area[i].vm_end, res);
+	// 		return res;
+	// 	}
+	// }
 
 	utc->ldelf_stack_ptr = checkpoint.regs.stack_addr;
 	utc->entry_func = checkpoint.regs.entry_addr;
@@ -406,23 +406,23 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	DMSG("\n\nCRIU - DATA COPY START!");
 
-	area = checkpoint.vm_areas;
-	for(int i = 0; i < checkpoint.vm_area_count; i++) {
-		if(area[i].status & VMA_FILE_PRIVATE) {
-			area[i].original_data = binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
-			copy_vm_area_data(&area[i]);
-		}
-	}
+	// area = checkpoint.vm_areas;
+	// for(int i = 0; i < checkpoint.vm_area_count; i++) {
+	// 	if(area[i].status & VMA_FILE_PRIVATE) {
+	// 		area[i].original_data = binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
+	// 		copy_vm_area_data(&area[i]);
+	// 	}
+	// }
 
-	uint32_t pages_file_index = 0;
+	// uint32_t pages_file_index = 0;
 	struct criu_pagemap_entry_tracker * entry = NULL;
-	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
-		copy_pagemap_entry(entry, 
-				 binaryData->memref.buffer 								// Data buffer
-				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
-				+ SMALL_PAGE_SIZE * pages_file_index);					// Plus offset of the entry
-		pages_file_index += entry->entry.nr_pages;
-	}
+	// TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
+	// 	copy_pagemap_entry(entry, 
+	// 			 binaryData->memref.buffer 								// Data buffer
+	// 			+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
+	// 			+ SMALL_PAGE_SIZE * pages_file_index);					// Plus offset of the entry
+	// 	pages_file_index += entry->entry.nr_pages;
+	// }
 
 #ifdef CRIU_TEST_RETURNING
 	memcpy(checkpoint.entry_addr, test_code_exec_sys_exit, sizeof(test_code_exec_sys_exit));
