@@ -601,49 +601,7 @@ static struct tee_pager_area *find_uta_area(vaddr_t va)
 	if (!is_user_mode_ctx(ctx))
 		return NULL;
 
-	struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
-	if(uctx->is_criu_checkpoint) {
-		DMSG("yup dealing with a checkpoint, check if it is already allocated");
-
-		// struct criu_pagemap_entry_tracker * entry = NULL;
-		// TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
-		// 	if(va >= entry->entry.vaddr_start &&
-		// 	   va <= entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
-		// 		DMSG("Pagemap entry found! %p", entry->entry.vaddr_start);
-		// 		return NULL;
-		// 		break;
-		// 	}
-		// }
-
-		struct criu_vm_area * area = uctx->checkpoint->vm_areas;
-		for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
-			if(va >= area[i].vm_start &&
-			   va <= area[i].vm_end) {
-				vaddr_t page_va = va & ~SMALL_PAGE_MASK;
-				DMSG("page va: %p", page_va);
-				DMSG("VM entry found! %p", area[i].vm_start);
-				
-
-				struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
-
-				// First try to map only one single page.
-				criu_alloc_and_map_ldelf_fobj(utc, 1, area[i].protection, &page_va);
-
-				// Copy the page data.
-				memcpy((void *)page_va, area[i].original_data + area[i].offset + (page_va - area[i].vm_start), SMALL_PAGE_SIZE);
-
-				DMSG("this all went fine!");
-				return NULL;
-				break;
-			}
-		}
-
-		// find area first? to check if it already exists but is hidden?
-
-		return NULL;
-	} else {
-		return find_area(to_user_mode_ctx(ctx)->areas, va);
-	}
+	return find_area(to_user_mode_ctx(ctx)->areas, va);
 }
 #else
 static struct tee_pager_area *find_uta_area(vaddr_t va __unused)
@@ -1418,7 +1376,6 @@ static bool pager_update_permissions(struct tee_pager_area *area,
 			panic();
 		}
 	}
-
 	switch (core_mmu_get_fault_type(ai->fault_descr)) {
 	case CORE_MMU_FAULT_TRANSLATION:
 	case CORE_MMU_FAULT_READ_PERMISSION:
@@ -1543,6 +1500,60 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 			clean_user_cache = true;
 		}
 	}
+
+	if(!area) {		
+		struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
+		if(is_user_mode_ctx(ctx)) {
+			struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
+			if(uctx->is_criu_checkpoint) {
+				DMSG("yup dealing with a checkpoint, check if it is already allocated");
+
+				// struct criu_pagemap_entry_tracker * entry = NULL;
+				// TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
+				// 	if(va >= entry->entry.vaddr_start &&
+				// 	   va <= entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
+				// 		DMSG("Pagemap entry found! %p", entry->entry.vaddr_start);
+				// 		return NULL;
+				// 		break;
+				// 	}
+				// }
+
+				struct criu_vm_area * area = uctx->checkpoint->vm_areas;
+				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
+					if(ai->va >= area[i].vm_start &&
+					   ai->va <= area[i].vm_end) {
+						vaddr_t page_va = ai->va & ~SMALL_PAGE_MASK;
+						DMSG("va: %p - page va: %p", ai->va, page_va);
+						DMSG("VM entry found! %p", area[i].vm_start);
+						
+						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
+
+						// First try to map only one single page.
+						criu_alloc_and_map_ldelf_fobj(utc, 1, area[i].protection | TEE_MATTR_URWX | TEE_MATTR_PRWX, &page_va);
+
+						DMSG("\n");
+						DMSG("Time to memcpy the data");
+						// Copy the page data.
+						memcpy((void *)page_va, area[i].original_data + area[i].offset + (page_va - area[i].vm_start), SMALL_PAGE_SIZE);
+
+						// Remap after copying..
+
+						DMSG("memcpy completed!");
+						DMSG("\n");
+				
+						area = find_area(uctx->areas, ai->va);
+						break;
+					}
+				}
+			} else {
+				area = find_area(to_user_mode_ctx(ctx)->areas, ai->va);
+			}
+		}
+	}
+
+
+	exceptions = pager_lock(ai);
+
 	if (!area || !area->pgt) {
 		ret = false;
 		goto out;
