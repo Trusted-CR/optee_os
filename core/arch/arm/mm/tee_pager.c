@@ -605,21 +605,34 @@ static struct tee_pager_area *find_uta_area(vaddr_t va)
 	if(uctx->is_criu_checkpoint) {
 		DMSG("yup dealing with a checkpoint, check if it is already allocated");
 
-		struct criu_pagemap_entry_tracker * entry = NULL;
-		TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
-			if(va >= entry->entry.vaddr_start &&
-			   va <= entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
-				DMSG("Pagemap entry found! %p", entry->entry.vaddr_start);
-				return NULL;
-				break;
-			}
-		}
+		// struct criu_pagemap_entry_tracker * entry = NULL;
+		// TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
+		// 	if(va >= entry->entry.vaddr_start &&
+		// 	   va <= entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
+		// 		DMSG("Pagemap entry found! %p", entry->entry.vaddr_start);
+		// 		return NULL;
+		// 		break;
+		// 	}
+		// }
 
 		struct criu_vm_area * area = uctx->checkpoint->vm_areas;
 		for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
 			if(va >= area[i].vm_start &&
 			   va <= area[i].vm_end) {
+				vaddr_t page_va = va & ~SMALL_PAGE_MASK;
+				DMSG("page va: %p", page_va);
 				DMSG("VM entry found! %p", area[i].vm_start);
+				
+
+				struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
+
+				// First try to map only one single page.
+				criu_alloc_and_map_ldelf_fobj(utc, 1, area[i].protection, &page_va);
+
+				// Copy the page data.
+				memcpy((void *)page_va, area[i].original_data + area[i].offset + (page_va - area[i].vm_start), SMALL_PAGE_SIZE);
+
+				DMSG("this all went fine!");
 				return NULL;
 				break;
 			}
