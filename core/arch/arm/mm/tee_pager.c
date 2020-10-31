@@ -591,6 +591,7 @@ static struct tee_pager_area *find_area(struct tee_pager_area_head *areas,
 			DMSG("va: %p is in %p-%p!", va, area->base, area->base + area->size);
 			
 			return area;
+		}
 	}
 	return NULL;
 }
@@ -1590,14 +1591,12 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		if(area->type == 2) {
 			DMSG("Going to add a locked entry: npages: %d - pc %p\tva %p - area: %p - %p - type: %d", tee_pager_npages, ai->pc, ai->va, area->base, area->base + area->size, area->type);
 		}
-		DMSG("Getting a page");
 		pmem = tee_pager_get_page(area->type);
 		if (!pmem) {
 			abort_print(ai);
 			panic();
 		}
 
-		DMSG("Loading the page");
 		/* load page code & data */
 		tee_pager_load_page(area, page_va, pmem->va_alias);
 
@@ -1696,9 +1695,9 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		}
 		pgt_inc_used_entries(area->pgt);
 
-		DMSG("Mapped 0x%" PRIxVA " -> 0x%" PRIxPA, page_va, pa);
-		DMSG("kern: rwx:%d%d%d", (attr & TEE_MATTR_PR) > 0, (attr & TEE_MATTR_PW) > 0, (attr & TEE_MATTR_PX) > 0);
-		DMSG("user: rwx:%d%d%d", (attr & TEE_MATTR_UR) > 0, (attr & TEE_MATTR_UW) > 0, (attr & TEE_MATTR_UX) > 0);
+		DMSG("Mapped 0x%" PRIxVA " -> 0x%" PRIxPA" - rwxRWX:%d%d%d%d%d%d", page_va, pa, 
+			(attr & TEE_MATTR_UR) > 0, (attr & TEE_MATTR_UW) > 0, (attr & TEE_MATTR_UX) > 0,
+			(attr & TEE_MATTR_PR) > 0, (attr & TEE_MATTR_PW) > 0, (attr & TEE_MATTR_PX) > 0);
 	}
 
 	tee_pager_hide_pages();
