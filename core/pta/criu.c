@@ -410,19 +410,16 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	for(int i = 0; i < checkpoint.vm_area_count; i++) {
 		if(area[i].status & VMA_FILE_PRIVATE) {
 			area[i].original_data = binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
-			// copy_vm_area_data(&area[i]);
 		}
 	}
 
-	// uint32_t pages_file_index = 0;
+	uint32_t pages_file_index = 0;
 	struct criu_pagemap_entry_tracker * entry = NULL;
-	// TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
-	// 	copy_pagemap_entry(entry, 
-	// 			 binaryData->memref.buffer 								// Data buffer
-	// 			+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
-	// 			+ SMALL_PAGE_SIZE * pages_file_index);					// Plus offset of the entry
-	// 	pages_file_index += entry->entry.nr_pages;
-	// }
+	TAILQ_FOREACH(entry, &checkpoint.pagemap_entries, link) {
+		entry->buffer = binaryData->memref.buffer 								// Data buffer
+				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
+				+ SMALL_PAGE_SIZE * pages_file_index;
+	}
 
 #ifdef CRIU_TEST_RETURNING
 	memcpy(checkpoint.entry_addr, test_code_exec_sys_exit, sizeof(test_code_exec_sys_exit));

@@ -30,6 +30,7 @@ struct criu_pagemap_entry {
 struct criu_pagemap_entry_tracker{
 	struct criu_pagemap_entry entry;
 	bool dirty;
+	uint64_t * buffer;
 	TAILQ_ENTRY(criu_pagemap_entry) link;
 };
 
