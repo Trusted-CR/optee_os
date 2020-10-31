@@ -461,8 +461,11 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 	}
 
 	if (thread_is_from_abort_mode()) {
-		abort_print_error(ai);
-		panic("[abort] abort in abort handler (trap CPU)");
+		struct thread_specific_data *tsd = thread_get_tsd();
+		if(!(is_user_ta_ctx(tsd->ctx) && to_user_ta_ctx(tsd->ctx)->uctx.is_criu_checkpoint)) {
+			abort_print_error(ai);
+			panic("[abort] abort in abort handler (trap CPU)");
+		}
 	}
 
 	if (ai->abort_type == ABORT_TYPE_UNDEF) {

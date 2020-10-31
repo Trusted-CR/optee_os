@@ -1518,25 +1518,25 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 				// 	}
 				// }
 
-				struct criu_vm_area * area = uctx->checkpoint->vm_areas;
+				struct criu_vm_area * vm_area = uctx->checkpoint->vm_areas;
 				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
-					if(ai->va >= area[i].vm_start &&
-					   ai->va <= area[i].vm_end) {
+					if(ai->va >= vm_area[i].vm_start &&
+					   ai->va <= vm_area[i].vm_end) {
 						vaddr_t page_va = ai->va & ~SMALL_PAGE_MASK;
 						DMSG("va: %p - page va: %p", ai->va, page_va);
-						DMSG("VM entry found! %p", area[i].vm_start);
+						DMSG("VM entry found! %p", vm_area[i].vm_start);
 						
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
 
 						// First try to map only one single page.
-						criu_alloc_and_map_ldelf_fobj(utc, 1, area[i].protection | TEE_MATTR_URWX | TEE_MATTR_PRWX, &page_va);
+						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area[i].protection | TEE_MATTR_URWX | TEE_MATTR_PRWX, &page_va);
 
 						DMSG("\n");
 						DMSG("Time to memcpy the data");
 						// Copy the page data.
-						memcpy((void *)page_va, area[i].original_data + area[i].offset + (page_va - area[i].vm_start), SMALL_PAGE_SIZE);
+						memcpy((void *)page_va, vm_area[i].original_data + vm_area[i].offset + (page_va - vm_area[i].vm_start), SMALL_PAGE_SIZE);
 
-						// Remap after copying..
+						// Remap after copying..?
 
 						DMSG("memcpy completed!");
 						DMSG("\n");
@@ -1545,8 +1545,6 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 						break;
 					}
 				}
-			} else {
-				area = find_area(to_user_mode_ctx(ctx)->areas, ai->va);
 			}
 		}
 	}
@@ -1554,7 +1552,12 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 
 	exceptions = pager_lock(ai);
 
-	if (!area || !area->pgt) {
+	if (!area) {
+		DMSG("area not found :(");
+		ret = false;
+		goto out;
+	} else if(!area->pgt) {
+		DMSG("pgt not found :(");
 		ret = false;
 		goto out;
 	}
