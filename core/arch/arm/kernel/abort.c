@@ -524,10 +524,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 	set_abort_info(abort_type, regs, &ai);
 
 	// This helps debugging for now
-/*	DMSG("ABORT AT PC %p - VA %p", ai.pc, ai.va);
-	DMSG("SP_EL0: %p", regs->sp_el0);
-	DMSG("REG x[13]: %p", regs->x13);
-	DMSG("REG x[19]: %p", regs->x19);*/
+	// DMSG("ABORT AT PC %p - VA %p", ai.pc, ai.va);
 
 	switch (get_fault_type(&ai)) {
 	case FAULT_TYPE_IGNORE:
@@ -642,4 +639,6 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 #endif
 		break;
 	}
+
+	DMSG("END OF FAULT HANDLER");
 }

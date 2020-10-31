@@ -246,7 +246,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		return true; /* return to user mode */
 	}
 
-	//DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
+	DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
 	struct thread_specific_data *tsd = thread_get_tsd();
 	if(is_user_ta_ctx(tsd->ctx)) {
 		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
