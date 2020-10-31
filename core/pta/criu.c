@@ -419,6 +419,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		entry->buffer = binaryData->memref.buffer 								// Data buffer
 				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
 				+ SMALL_PAGE_SIZE * pages_file_index;
+		pages_file_index += entry->entry.nr_pages;
 	}
 
 #ifdef CRIU_TEST_RETURNING
