@@ -1485,7 +1485,6 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 	 * page, instead we use the aliased mapping to populate the page
 	 * and once everything is ready we map it.
 	 */
-	exceptions = pager_lock(ai);
 
 	stat_handle_fault();
 
@@ -1501,6 +1500,9 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		}
 	}
 
+	bool copy_checkpoint_data = false;
+	struct criu_vm_area * vm_area = NULL;
+	int temp_fix = 0;
 	if(!area) {		
 		struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 		if(is_user_mode_ctx(ctx)) {
@@ -1518,11 +1520,10 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 				// 	}
 				// }
 
-				struct criu_vm_area * vm_area = uctx->checkpoint->vm_areas;
+				vm_area = uctx->checkpoint->vm_areas;
 				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
 					if(ai->va >= vm_area[i].vm_start &&
 					   ai->va <= vm_area[i].vm_end) {
-						vaddr_t page_va = ai->va & ~SMALL_PAGE_MASK;
 						DMSG("va: %p - page va: %p", ai->va, page_va);
 						DMSG("VM entry found! %p", vm_area[i].vm_start);
 						
@@ -1531,17 +1532,21 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 						// First try to map only one single page.
 						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area[i].protection | TEE_MATTR_URWX | TEE_MATTR_PRWX, &page_va);
 
-						DMSG("\n");
-						DMSG("Time to memcpy the data");
-						// Copy the page data.
-						memcpy((void *)page_va, vm_area[i].original_data + vm_area[i].offset + (page_va - vm_area[i].vm_start), SMALL_PAGE_SIZE);
+						// DMSG("\n");
+						// DMSG("Time to memcpy the data");
+						// // Copy the page data.
+						// memcpy((void *)page_va, vm_area[i].original_data + vm_area[i].offset + (page_va - vm_area[i].vm_start), SMALL_PAGE_SIZE);
 
-						// Remap after copying..?
+						// // Remap after copying..?
 
-						DMSG("memcpy completed!");
-						DMSG("\n");
+						// DMSG("memcpy completed!");
+						// DMSG("\n");
 				
 						area = find_area(uctx->areas, ai->va);
+						copy_checkpoint_data = true;
+						temp_fix = i;
+						// uint64_t * test = 0x40053ea4;
+						// DMSG("YO: %p", *test);
 						break;
 					}
 				}
@@ -1562,6 +1567,10 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		goto out;
 	}
 
+	// uint32_t perm = get_area_mattr(area->flags);
+	// DMSG("area found, time to unhide");
+	// DMSG("area type: %p", area->type);
+	// DMSG("area perms: r: %p, w:%p, x:%p", perm & TEE_MATTR_PR, perm & TEE_MATTR_PW, perm & TEE_MATTR_PX);
 	if (!tee_pager_unhide_page(area, area_va2idx(area, page_va))) {
 		struct tee_pager_pmem *pmem = NULL;
 		uint32_t attr = 0;
@@ -1582,12 +1591,17 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 			goto out;
 		}
 
+		if(area->type == 2) {
+			DMSG("Going to add a locked entry: npages: %d - pc %p\tva %p - area: %p - %p - type: %d", tee_pager_npages, ai->pc, ai->va, area->base, area->base + area->size, area->type);
+		}
+		DMSG("Getting a page");
 		pmem = tee_pager_get_page(area->type);
 		if (!pmem) {
 			abort_print(ai);
 			panic();
 		}
 
+		DMSG("Loading the page");
 		/* load page code & data */
 		tee_pager_load_page(area, page_va, pmem->va_alias);
 
@@ -1599,6 +1613,29 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 					SMALL_PAGE_SHIFT);
 		tblidx = pmem_get_area_tblidx(pmem, area);
 		attr = get_area_mattr(area->flags);
+
+		pa = get_pmem_pa(pmem);
+
+		area_set_entry(area, tblidx, pa, attr);
+		/*
+			* No need to flush TLB for this entry, it was
+			* invalid. We should use a barrier though, to make
+			* sure that the change is visible.
+			*/
+		dsb_ishst();
+
+		//Perhaps the copy needs to happen over here.
+		if(copy_checkpoint_data && (vm_area != NULL)) {
+			DMSG("\n");
+			DMSG("Time to memcpy the data");
+			// Copy the page data.
+			memcpy((void *)page_va, vm_area[temp_fix].original_data + vm_area[temp_fix].offset + (page_va - vm_area[temp_fix].vm_start), SMALL_PAGE_SIZE);
+
+			DMSG("memcpy completed!");
+			DMSG("\n");
+		}
+		// Remap after copying..?
+
 		/*
 		 * Pages from PAGER_AREA_TYPE_RW starts read-only to be
 		 * able to tell when they are updated and should be tagged
@@ -1606,7 +1643,6 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		 */
 		if (area->type == PAGER_AREA_TYPE_RW)
 			attr &= ~(TEE_MATTR_PW | TEE_MATTR_UW);
-		pa = get_pmem_pa(pmem);
 
 		/*
 		 * We've updated the page using the aliased mapping and
@@ -1658,8 +1694,9 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		}
 		pgt_inc_used_entries(area->pgt);
 
-		FMSG("Mapped 0x%" PRIxVA " -> 0x%" PRIxPA, page_va, pa);
-
+		DMSG("Mapped 0x%" PRIxVA " -> 0x%" PRIxPA, page_va, pa);
+		DMSG("kern: readable? %d, writable? %d, executable? %d", (attr & TEE_MATTR_PR) > 0, (attr & TEE_MATTR_PW) > 0, (attr & TEE_MATTR_PX) > 0);
+		DMSG("user: readable? %d, writable? %d, executable? %d", (attr & TEE_MATTR_UR) > 0, (attr & TEE_MATTR_UW) > 0, (attr & TEE_MATTR_UX) > 0);
 	}
 
 	tee_pager_hide_pages();
