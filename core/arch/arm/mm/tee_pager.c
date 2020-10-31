@@ -1527,7 +1527,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
 
 						// First try to map only one single page.
-						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area[i].protection | TEE_MATTR_URWX | TEE_MATTR_PRWX, &page_va);
+						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area[i].protection | TEE_MATTR_PW, &page_va);
 				
 						area = find_area(uctx->areas, ai->va);
 						copy_checkpoint_data = true;
@@ -1627,12 +1627,15 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 				// memcpy((void *)page_va, vm_area[temp_fix].original_data + vm_area[temp_fix].offset + (page_va - vm_area[temp_fix].vm_start), SMALL_PAGE_SIZE);
 
 				DMSG("memcpy completed!"); DMSG("\n");
+
+				pmem->flags |= PMEM_FLAG_DIRTY;
 			} else if(vm_area != NULL) {
 				DMSG("\n"); DMSG("Time to memcpy the data");
 				// Copy the page data.
 				memcpy((void *)page_va, vm_area[temp_fix].original_data + vm_area[temp_fix].offset + (page_va - vm_area[temp_fix].vm_start), SMALL_PAGE_SIZE);
 
 				DMSG("memcpy completed!"); DMSG("\n");
+				pmem->flags |= PMEM_FLAG_DIRTY;
 			}
 		}
 		// Remap after copying..?

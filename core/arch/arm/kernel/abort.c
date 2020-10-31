@@ -549,6 +549,9 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			panic("abort outside thread context");
 		}
 
+		// Ugly, but for now it works.. Only disable and re-enable the VFP registers on the first pagefault.
+		static int pagefault_level = 0;
+
 #ifndef CFG_WITH_PAGER
 #define L1_XLAT_ADDRESS_SHIFT 30
 #define TABLE_DESC 0x3
@@ -623,9 +626,11 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 
 	// panic("Let's call it a quit");
 #else
-		thread_kernel_save_vfp();
+		if(pagefault_level++ == 0)
+			thread_kernel_save_vfp();
 		handled = tee_pager_handle_fault(&ai);
-		thread_kernel_restore_vfp();
+		if(--pagefault_level == 0)
+			thread_kernel_restore_vfp();
 		if (!handled) {
 			if (!abort_is_user_exception(&ai)) {
 				abort_print_error(&ai);
