@@ -21,14 +21,6 @@
 
 #define CRIU_LOAD_CHECKPOINT	0
 
-// #define CRIU_TEST_RETURNING
-#ifdef CRIU_TEST_RETURNING
-// This is test data, consisting of instructions that only executes a sys_exit syscall
-const uint8_t test_code_exec_sys_exit[4096] __aligned(4096) = { 
-	0x00, 0x00, 0x80, 0xd2, 0xa8, 0x0b, 
-	0x80, 0xd2, 0x01, 0x00, 0x00, 0xd4 };
-#endif
-
 static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
   if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
       strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
@@ -302,14 +294,6 @@ static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * 
 	free(s);
 }
 
-// extern void dump_xlat_table(vaddr_t va, int level);
-// static void dump_mmu_tables(struct core_mmu_map * map) {
-// 	struct core_mmu_map_l1_entry * e = NULL;
-// 	TAILQ_FOREACH(e, &map->l1_entries, link) {
-// 		dump_xlat_table(e->idx << 30, 2);
-// 	}
-// }
-
 static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct criu_vm_area * area) {
 	if(area == NULL)
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -386,14 +370,6 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	
 	tee_ta_push_current_session(s);
 
-	struct criu_vm_area * area = checkpoint.vm_areas;
-	// for(int i = 0; i < checkpoint.vm_area_count; i++) {
-	// 	if ((res = map_vm_area(utc, &area[i]))) {
-	// 		DMSG("CRIU - ALLOC %p - %p failed: %p", area[i].vm_start, area[i].vm_end, res);
-	// 		return res;
-	// 	}
-	// }
-
 	utc->ldelf_stack_ptr = checkpoint.regs.stack_addr;
 	utc->entry_func = checkpoint.regs.entry_addr;
 
@@ -402,11 +378,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	DMSG("CRIU - SET CTX!");
 	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
-	// dump_mmu_tables(&utc->uctx.map);
-
-	DMSG("\n\nCRIU - DATA COPY START!");
-
-	area = checkpoint.vm_areas;
+	struct criu_vm_area * area = checkpoint.vm_areas;
 	for(int i = 0; i < checkpoint.vm_area_count; i++) {
 		if(area[i].status & VMA_FILE_PRIVATE) {
 			area[i].original_data = binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
@@ -422,36 +394,12 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		pages_file_index += entry->entry.nr_pages;
 	}
 
-#ifdef CRIU_TEST_RETURNING
-	memcpy(checkpoint.entry_addr, test_code_exec_sys_exit, sizeof(test_code_exec_sys_exit));
-#endif
-
-	DMSG("CRIU - DATA COPIED OVER!\n\n");
-
-
-	// DMSG("\n\nCRIU - SET PROTECTION BITS");
-	// res = criu_vm_set_prot(&utc->uctx, code.vm_start,
-	// 		  ROUNDUP(code.vm_end - code.vm_start, SMALL_PAGE_SIZE),
-	// 		  TEE_MATTR_URX);
-	// if (res) {
-	// 	DMSG("CRIU - SET PROTECTION BITS failed: %d", res);
-	// 	return res;
-	// }
-
-	// // dump_mmu_tables(&utc->uctx.map);
-
-	// DMSG("CRIU - PROTECTION BITS SET\n\n");
-
 	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, utc->entry_func);
 
 	utc->is_32bit = false;
 	utc->uctx.ctx.ref_count = 1;
 	condvar_init(&utc->uctx.ctx.busy_cv);
 	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->uctx.ctx, link);
-
-	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
-
-	user_mode_ctx_print_mappings(&utc->uctx);
 
 	DMSG("\n\nCRIU - RUN! Entry address: %p", (void *) checkpoint.regs.entry_addr);
 	
