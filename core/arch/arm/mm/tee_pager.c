@@ -1508,30 +1508,27 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 	bool copy_from_pagemap = false;
 	struct criu_vm_area * vm_area = NULL;
 	struct criu_pagemap_entry_tracker * entry = NULL;
-	int temp_fix = 0;
 	if(!area) {		
 		struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 		if(is_user_mode_ctx(ctx)) {
 			struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
 			if(uctx->is_criu_checkpoint) {
-				DMSG("yup dealing with a checkpoint, check if it is already allocated");
+				DMSG("yup dealing with a checkpoint, check if it is within the checkpoint range");
 				
-				// If not, copy from vm areas
+				// First check if the va address is valid within the vm areas range
 				vm_area = uctx->checkpoint->vm_areas;
-				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
-					if(ai->va >= vm_area[i].vm_start &&
-					   ai->va <= vm_area[i].vm_end) {
-						DMSG("va: %p - page va: %p", ai->va, page_va);
-						DMSG("VM entry found! %p", vm_area[i].vm_start);
+				for(int i = 0; i < uctx->checkpoint->vm_area_count; vm_area++) {
+					if(ai->va >= vm_area->vm_start &&
+					   ai->va <= vm_area->vm_end) {
+						DMSG("Pagefault %p happens within checkpoint VM entry! %p-%p", ai->va, vm_area->vm_start, vm_area->vm_end);
 						
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
 
 						// First try to map only one single page.
-						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area[i].protection, &page_va);
+						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area->protection, &page_va);
 				
 						area = find_area(uctx->areas, ai->va);
 						copy_checkpoint_data = true;
-						temp_fix = i;
 						break;
 					}
 				}
@@ -1541,7 +1538,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 					TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
 						if(ai->va >= entry->entry.vaddr_start &&
 						   ai->va <= entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
-							DMSG("Pagemap entry found! %p", entry->entry.vaddr_start);
+							DMSG("Additional checkpoint pagemap entry found! %p", entry->entry.vaddr_start, entry->entry.vaddr_start+ entry->entry.nr_pages*SMALL_PAGE_SIZE);
 							
 							copy_checkpoint_data = true;
 							copy_from_pagemap = true;
@@ -1620,25 +1617,20 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 				*/
 			dsb_ishst();
 
-			if(copy_from_pagemap && (entry != NULL)) {
-				DMSG("\n"); DMSG("Time to memcpy the data");
+			if(copy_checkpoint_data) {
+				DMSG("Time to memcpy the data");
 				// Copy the page data.
-				memcpy((void *)page_va, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
-				// memcpy((void *)page_va, vm_area[temp_fix].original_data + vm_area[temp_fix].offset + (page_va - vm_area[temp_fix].vm_start), SMALL_PAGE_SIZE);
-
-				DMSG("memcpy completed!"); DMSG("\n");
-
-				pmem->flags |= PMEM_FLAG_DIRTY;
-			} else if(vm_area != NULL) {
-				DMSG("\n"); DMSG("Time to memcpy the data");
-				// Copy the page data.
-				memcpy((void *)page_va, vm_area[temp_fix].original_data + vm_area[temp_fix].offset + (page_va - vm_area[temp_fix].vm_start), SMALL_PAGE_SIZE);
-
-				DMSG("memcpy completed!"); DMSG("\n");
-				pmem->flags |= PMEM_FLAG_DIRTY;
+				if (entry != NULL) {
+					memcpy((void *)page_va, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
+					pmem->flags |= PMEM_FLAG_DIRTY;
+				} else if(vm_area != NULL) {
+					memcpy((void *)page_va, vm_area->original_data + vm_area->offset + (page_va - vm_area->vm_start), SMALL_PAGE_SIZE);
+					pmem->flags |= PMEM_FLAG_DIRTY;
+				}
+				
+				DMSG("memcpy completed!");
 			}
 		}
-		// Remap after copying..?
 
 		/*
 		 * Pages from PAGER_AREA_TYPE_RW starts read-only to be
