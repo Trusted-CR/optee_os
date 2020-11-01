@@ -246,7 +246,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		return true; /* return to user mode */
 	}
 
-	DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
+	// DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
 	struct thread_specific_data *tsd = thread_get_tsd();
 	if(is_user_ta_ctx(tsd->ctx)) {
 		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
@@ -265,9 +265,9 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 				set_svc_retval(regs, 0);
 
-				static int number_of_times = 3;
+				static int number_of_times = 30;
 				if(number_of_times-- <= 0) {
-					DMSG("ret");
+					DMSG("Time to stop execution");
 					// Checkpoint all registers
 					for(int i = 0; i < 31; i++) {
 						checkpoint->regs.regs[i] = regs->x[i];
@@ -305,7 +305,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			} else if(scn == 101) {
 				uint64_t * s = regs->x[0];
 				DMSG("syscall nanosleep handled: %llu seconds", *s);
-				// mdelay(*s * 1000);
+				mdelay(*s * 1000);
 				set_svc_retval(regs, 0);
 				return true;
 			}

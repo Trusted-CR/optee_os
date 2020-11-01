@@ -182,7 +182,7 @@ static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
 		return TEE_ERROR_OUT_OF_MEMORY;
 	}
 
-	DMSG("NEED %d PAGE TABLES", ntbl);
+	// DMSG("We will be using %d page tables in total", ntbl);
 
 #ifdef CFG_PAGED_USER_TA
 	tsd = thread_get_tsd();
@@ -308,7 +308,7 @@ TEE_Result criu_vm_map_pad(struct user_mode_ctx *uctx, vaddr_t *va, size_t len,
 		      uint32_t prot, uint32_t flags, struct mobj *mobj,
 		      size_t offs, size_t pad_begin, size_t pad_end)
 {
-	DMSG("criu_vm_map_pad: va: %p - len: %p", *va, len);
+	// DMSG("criu_vm_map_pad: va: %p - len: %p", *va, len);
 	TEE_Result res = TEE_SUCCESS;
 	struct vm_region *reg = NULL;
 	uint32_t attr = 0;
@@ -1459,6 +1459,7 @@ void criu_tee_mmu_clear_ctx(struct tee_ta_ctx *ctx)
 
 void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 {
+	DMSG("CRIU_TEE_MMU_SET_CTX");
 	struct thread_specific_data *tsd = thread_get_tsd();
 
 	core_mmu_set_user_map(NULL);

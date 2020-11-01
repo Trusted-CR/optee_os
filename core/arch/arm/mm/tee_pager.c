@@ -1620,7 +1620,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 			dsb_ishst();
 
 			if(copy_checkpoint_data) {
-				DMSG("Time to memcpy the data");
+				// DMSG("Time to memcpy the data");
 				// Copy the page data.
 				if (entry != NULL) {
 					memcpy((void *)page_va, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
@@ -1630,7 +1630,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 					pmem->flags |= PMEM_FLAG_DIRTY;
 				}
 				
-				DMSG("memcpy completed!");
+				// DMSG("memcpy completed!");
 			}
 		}
 
