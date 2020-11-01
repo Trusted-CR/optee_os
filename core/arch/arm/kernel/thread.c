@@ -56,7 +56,7 @@
 #endif /*ARM32*/
 
 #ifdef ARM64
-#define STACK_TMP_SIZE		(2048 + STACK_TMP_OFFS)
+#define STACK_TMP_SIZE		(4096 + STACK_TMP_OFFS)
 #define STACK_THREAD_SIZE	8192*3
 
 #if TRACE_LEVEL > 0

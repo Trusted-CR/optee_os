@@ -1512,9 +1512,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 		if(is_user_mode_ctx(ctx)) {
 			struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
-			if(uctx->is_criu_checkpoint) {
-				DMSG("yup dealing with a checkpoint, check if it is within the checkpoint range");
-				
+			if(uctx->is_criu_checkpoint) {				
 				// First check if the va address is valid within the vm areas range
 				vm_area = uctx->checkpoint->vm_areas;
 				for(int i = 0; i < uctx->checkpoint->vm_area_count; vm_area++) {
