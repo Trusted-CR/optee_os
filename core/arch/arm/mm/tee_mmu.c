@@ -136,25 +136,37 @@ static size_t get_num_req_pgts(struct user_mode_ctx *uctx, vaddr_t *begin,
 	return (e - b) >> CORE_MMU_PGDIR_SHIFT;
 }
 
-static size_t get_num_req_pgts_new(struct vm_region * reg, vaddr_t *begin,
+static size_t get_num_req_pgts_new(struct user_mode_ctx *uctx, vaddr_t *begin,
 			       vaddr_t *end)
 {
-	vaddr_t b;
-	vaddr_t e;
+	size_t ntbl = 0;
 
-	if (reg == NULL) {
-		core_mmu_get_user_va_range(&b, NULL);
-		e = b;
-	} else {
-		b = ROUNDDOWN(reg->va, CORE_MMU_PGDIR_SIZE);
-		e = ROUNDUP(reg->va + reg->size, CORE_MMU_PGDIR_SIZE);
+	vaddr_t tbl_begin = 0x0;
+	vaddr_t tbl_end   = 0x0;
+
+	struct vm_region *r;
+	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
+		vaddr_t b = ROUNDDOWN(r->va, CORE_MMU_PGDIR_SIZE);
+		vaddr_t e = ROUNDUP(r->va + r->size, CORE_MMU_PGDIR_SIZE);
+
+		size_t t = 0; 
+		if(tbl_end != e) {
+			t = (e - b) >> CORE_MMU_PGDIR_SHIFT;
+
+			if(tbl_begin == b)
+				t -= 1;
+
+			ntbl += t;
+		}
+	
+		tbl_begin = b;
+		tbl_end = e;
+
+		// To debug the number of page tables
+		// DMSG("t: %d - VA: %p: %p - %p", t, r->va, b, e);
 	}
 
-	if (begin)
-		*begin = b;
-	if (end)
-		*end = e;
-	return (e - b) >> CORE_MMU_PGDIR_SHIFT;
+	return ntbl;
 }
 
 static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
@@ -163,22 +175,14 @@ static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
 	vaddr_t b;
 	vaddr_t e;
 	size_t ntbl = 0;
-	struct vm_region *r;
 
-	// TODO: This calculation is wrong, it does not take into consideration that there can be multiple regions
-	// that are in the same pagetable. For now this function at least returns the maximum possible number of pgts
-	// required. Fix later
-	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
-		size_t t = get_num_req_pgts_new(r, &b, &e);
-		ntbl += t;
-		DMSG("t: %d - VA: %p: %p - %p", t, r->va, b, e);
-	}
-
-	DMSG("NEED %d PAGE TABLES", ntbl);
+	ntbl = get_num_req_pgts_new(uctx, &b, &e);
 	if (!pgt_check_avail(ntbl)) {
 		EMSG("%zu page tables not available", ntbl);
 		return TEE_ERROR_OUT_OF_MEMORY;
 	}
+
+	DMSG("NEED %d PAGE TABLES", ntbl);
 
 #ifdef CFG_PAGED_USER_TA
 	tsd = thread_get_tsd();
