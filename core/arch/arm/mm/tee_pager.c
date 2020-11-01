@@ -1416,8 +1416,44 @@ static bool pager_update_permissions(struct tee_pager_area *area,
 				area_set_entry(area, pgidx, pa,
 					       get_area_mattr(area->flags));
 				area_tlbi_entry(area, pgidx);
-			}
 
+
+
+
+
+
+
+				// Mark checkpoint page as dirty
+				struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
+				if(is_user_mode_ctx(ctx)) {
+					struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
+					if(uctx->is_criu_checkpoint) {
+						struct criu_checkpoint * checkpoint = uctx->checkpoint;
+						vaddr_t dirty_address = ai->va & ~SMALL_PAGE_MASK;
+					
+						bool dirty_checkpoint_entry = false;
+
+						struct criu_vm_area * vm_areas;
+						for(int i = 0; i < checkpoint->vm_area_count; i++) {
+							if((checkpoint->vm_areas[i].vm_start <= ai->va) && (ai->va <= checkpoint->vm_areas[i].vm_end)) {
+								dirty_checkpoint_entry = true;
+								break;
+							}
+						}
+
+						if(dirty_checkpoint_entry) {
+							DMSG("Page fault - Marking page as dirty: %p", dirty_address);
+
+							struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
+							entry->entry.vaddr_start = dirty_address;
+							entry->entry.nr_pages = 1;
+							entry->dirty = true;
+
+							TAILQ_INSERT_TAIL(&uctx->checkpoint->pagemap_entries, entry, link);
+						}
+					}
+				}
+			}
 		} else {
 			if (!(area->flags & TEE_MATTR_PW)) {
 				abort_print_error(ai);
@@ -1540,7 +1576,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 					TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
 						if(ai->va >= entry->entry.vaddr_start &&
 						   ai->va <= entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
-							DMSG("Additional checkpoint pagemap entry found! %p", entry->entry.vaddr_start, entry->entry.vaddr_start+ entry->entry.nr_pages*SMALL_PAGE_SIZE);
+							DMSG("Additional checkpoint pagemap entry found! %p-%p", entry->entry.vaddr_start, entry->entry.vaddr_start+ entry->entry.nr_pages*SMALL_PAGE_SIZE);
 							
 							copy_checkpoint_data = true;
 							copy_from_pagemap = true;

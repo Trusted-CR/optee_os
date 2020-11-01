@@ -305,7 +305,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			} else if(scn == 101) {
 				uint64_t * s = regs->x[0];
 				DMSG("syscall nanosleep handled: %llu seconds", *s);
-				mdelay(*s * 1000);
+				// mdelay(*s * 1000);
 				set_svc_retval(regs, 0);
 				return true;
 			}
