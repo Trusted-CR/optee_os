@@ -204,6 +204,15 @@ tee_pager_assign_um_tables(struct user_mode_ctx *uctx __unused)
 }
 #endif
 
+#ifdef CFG_WITH_PAGER
+struct pgt *find_pgt(struct pgt *pgt, vaddr_t va);
+#else
+static inline 
+struct pgt *find_pgt(struct pgt *pgt, vaddr_t va)
+{ 
+	return NULL;
+}
+#endif
 /*
  * Adds physical pages to the pager to use. The supplied virtual address range
  * is searched for mapped physical pages and unmapped pages are ignored.

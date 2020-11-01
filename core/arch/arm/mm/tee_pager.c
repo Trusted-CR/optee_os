@@ -1777,7 +1777,7 @@ void tee_pager_add_pages(vaddr_t vaddr, size_t npages, bool unmap)
 }
 
 #ifdef CFG_PAGED_USER_TA
-static struct pgt *find_pgt(struct pgt *pgt, vaddr_t va)
+struct pgt *find_pgt(struct pgt *pgt, vaddr_t va)
 {
 	struct pgt *p = pgt;
 
