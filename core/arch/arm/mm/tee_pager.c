@@ -588,7 +588,7 @@ static struct tee_pager_area *find_area(struct tee_pager_area_head *areas,
 
 	TAILQ_FOREACH(area, areas, link) {
 		if (core_is_buffer_inside(va, 1, area->base, area->size)) {
-			DMSG("va: %p is in %p-%p!", va, area->base, area->base + area->size);
+			// DMSG("va: %p is in %p-%p!", va, area->base, area->base + area->size);
 			
 			return area;
 		}
@@ -682,6 +682,7 @@ static void tee_pager_load_page(struct tee_pager_area *area, vaddr_t page_va,
 static void tee_pager_save_page(struct tee_pager_pmem *pmem)
 {
 	if (pmem_is_dirty(pmem)) {
+		// DMSG("Encrypting and saving dirty page to DRAM");
 		asan_tag_access(pmem->va_alias,
 				(uint8_t *)pmem->va_alias + SMALL_PAGE_SIZE);
 		if (fobj_save_page(pmem->fobj, pmem->fobj_pgidx,
@@ -1181,6 +1182,9 @@ static bool tee_pager_unhide_page(struct tee_pager_area *area,
 	uint32_t attr = 0;
 	paddr_t pa = 0;
 
+	// DMSG("going to unhide: %p - rwx:%d%d%d%d%d%d", area->base, 
+	// 		(a & TEE_MATTR_UR) > 0, (a & TEE_MATTR_UW) > 0, (a & TEE_MATTR_UX) > 0,
+	// 		(a & TEE_MATTR_PR) > 0, (a & TEE_MATTR_PW) > 0, (a & TEE_MATTR_PX) > 0);
 	if (!pmem)
 		return false;
 
@@ -1308,7 +1312,7 @@ static bool tee_pager_release_one_phys(struct tee_pager_area *area,
 		TAILQ_REMOVE(&tee_pager_lock_pmem_head, pmem, link);
 		pmem->fobj = NULL;
 		pmem->fobj_pgidx = INVALID_PGIDX;
-		DMSG("RELEASING locked entry: npages: %d - page_va: %p - area: %p - %p", tee_pager_npages, page_va, area->base, area->base + area->size);
+		// DMSG("RELEASING locked entry: npages: %d - page_va: %p - area: %p - %p", tee_pager_npages, page_va, area->base, area->base + area->size);
 		tee_pager_npages++;
 		set_npages();
 		TAILQ_INSERT_HEAD(&tee_pager_pmem_head, pmem, link);
@@ -1584,7 +1588,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		}
 
 		if(area->type == 2) {
-			DMSG("Going to add a locked entry: npages: %d - pc %p\tva %p - area: %p - %p - type: %d", tee_pager_npages, ai->pc, ai->va, area->base, area->base + area->size, area->type);
+			// DMSG("Going to add a locked entry: npages: %d - pc %p\tva %p - area: %p - %p - type: %d", tee_pager_npages, ai->pc, ai->va, area->base, area->base + area->size, area->type);
 		}
 		pmem = tee_pager_get_page(area->type);
 		if (!pmem) {
@@ -1688,9 +1692,9 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		}
 		pgt_inc_used_entries(area->pgt);
 
-		DMSG("Mapped 0x%" PRIxVA " -> 0x%" PRIxPA" - rwxRWX:%d%d%d%d%d%d", page_va, pa, 
-			(attr & TEE_MATTR_UR) > 0, (attr & TEE_MATTR_UW) > 0, (attr & TEE_MATTR_UX) > 0,
-			(attr & TEE_MATTR_PR) > 0, (attr & TEE_MATTR_PW) > 0, (attr & TEE_MATTR_PX) > 0);
+		// DMSG("Mapped 0x%" PRIxVA " -> 0x%" PRIxPA" - rwxRWX:%d%d%d%d%d%d", page_va, pa, 
+		// 	(attr & TEE_MATTR_UR) > 0, (attr & TEE_MATTR_UW) > 0, (attr & TEE_MATTR_UX) > 0,
+		// 	(attr & TEE_MATTR_PR) > 0, (attr & TEE_MATTR_PW) > 0, (attr & TEE_MATTR_PX) > 0);
 	}
 
 	tee_pager_hide_pages();
@@ -1807,7 +1811,8 @@ void tee_pager_pgt_save_and_release_entries(struct pgt *pgt)
 	struct tee_pager_area *area = NULL;
 	struct tee_pager_area_head *areas = NULL;
 	uint32_t exceptions = pager_lock_check_stack(SMALL_PAGE_SIZE);
-
+	
+	// DMSG("BYE PGT: %p, tbl: %p", pgt->vabase, pgt->tbl);
 	if (!pgt->num_used_entries)
 		goto out;
 
@@ -1821,8 +1826,10 @@ out:
 	areas = to_user_ta_ctx(pgt->ctx)->uctx.areas;
 	if (areas) {
 		TAILQ_FOREACH(area, areas, link) {
-			if (area->pgt == pgt)
+			if (area->pgt == pgt) {
+				// DMSG("BYE AREA: %p", area->base);
 				area->pgt = NULL;
+			}
 		}
 	}
 

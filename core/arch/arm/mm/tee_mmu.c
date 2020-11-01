@@ -171,7 +171,7 @@ static TEE_Result alloc_pgt_new(struct user_mode_ctx *uctx)
 	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
 		size_t t = get_num_req_pgts_new(r, &b, &e);
 		ntbl += t;
-		DMSG("VA: %p: %p - %p", r->va, b, e);
+		DMSG("t: %d - VA: %p: %p - %p", t, r->va, b, e);
 	}
 
 	DMSG("NEED %d PAGE TABLES", ntbl);
@@ -304,6 +304,7 @@ TEE_Result criu_vm_map_pad(struct user_mode_ctx *uctx, vaddr_t *va, size_t len,
 		      uint32_t prot, uint32_t flags, struct mobj *mobj,
 		      size_t offs, size_t pad_begin, size_t pad_end)
 {
+	DMSG("criu_vm_map_pad: va: %p - len: %p", *va, len);
 	TEE_Result res = TEE_SUCCESS;
 	struct vm_region *reg = NULL;
 	uint32_t attr = 0;
