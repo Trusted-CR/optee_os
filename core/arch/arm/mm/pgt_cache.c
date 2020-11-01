@@ -452,7 +452,6 @@ void pgt_alloc_regions(struct pgt_cache *pgt_cache, struct vm_info *vm_info, voi
 
 	mutex_lock(&pgt_mu);
 
-	pgt_free_unlocked(pgt_cache, ctx);
 	struct pgt *p;
 	struct pgt *pp = NULL;
 	TAILQ_FOREACH(r, &vm_info->regions, link) {
