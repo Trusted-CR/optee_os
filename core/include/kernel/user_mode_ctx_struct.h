@@ -54,6 +54,7 @@ struct criu_checkpoint {
 	uint32_t vm_area_count;
 	struct criu_pagemap_entries pagemap_entries;
 	struct criu_checkpoint_regs regs;
+	uint8_t l2_tables_index;
 };
 
 enum criu_status_bits {

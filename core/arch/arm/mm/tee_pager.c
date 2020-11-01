@@ -810,7 +810,6 @@ TEE_Result tee_pager_add_um_area(struct user_mode_ctx *uctx, vaddr_t base,
 		TAILQ_INIT(&uctx->map.l1_entries);
 	uctx->map.asid = 1;
 
-	static int i = 0;
 	TAILQ_FOREACH(area, uctx->areas, link) {
 		paddr_t pa;
 		size_t idx;
@@ -822,7 +821,8 @@ TEE_Result tee_pager_add_um_area(struct user_mode_ctx *uctx, vaddr_t base,
 			if(dir_info.va_base == NULL) {
 				struct core_mmu_map_l1_entry * e = calloc(1, sizeof(struct core_mmu_map_l1_entry));
 				e->idx = area->base >> 30;
-				void * l2_table = get_l2_table(i++); 
+
+				void * l2_table = get_l2_table(uctx->checkpoint->l2_tables_index++); 
 				memset(l2_table, 0, PGT_SIZE);
 
 				e->table = virt_to_phys(l2_table) | 0x3; // TABLE_DESC;

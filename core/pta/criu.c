@@ -355,7 +355,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	s->ref_count = 1;
 
 	struct checkpoint_file * checkpoint_file_var = binaryDataInformation->memref.buffer;
-	struct criu_checkpoint checkpoint = {};
+	struct criu_checkpoint checkpoint = { .l2_tables_index = 0 };
 	TAILQ_INIT(&checkpoint.pagemap_entries);
 
 	if(!parse_checkpoint_core(&checkpoint, binaryData->memref.buffer + checkpoint_file_var[CORE_FILE].buffer_index, checkpoint_file_var[CORE_FILE].file_size)) {
