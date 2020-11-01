@@ -1527,7 +1527,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
 
 						// First try to map only one single page.
-						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area[i].protection | TEE_MATTR_PW, &page_va);
+						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area[i].protection, &page_va);
 				
 						area = find_area(uctx->areas, ai->va);
 						copy_checkpoint_data = true;
@@ -1610,16 +1610,16 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 
 		pa = get_pmem_pa(pmem);
 
-		area_set_entry(area, tblidx, pa, attr);
-		/*
-			* No need to flush TLB for this entry, it was
-			* invalid. We should use a barrier though, to make
-			* sure that the change is visible.
-			*/
-		dsb_ishst();
-
 		//Perhaps the copy needs to happen over here.
 		if(copy_checkpoint_data) {
+			area_set_entry(area, tblidx, pa, attr | TEE_MATTR_PW);
+			/*
+				* No need to flush TLB for this entry, it was
+				* invalid. We should use a barrier though, to make
+				* sure that the change is visible.
+				*/
+			dsb_ishst();
+
 			if(copy_from_pagemap && (entry != NULL)) {
 				DMSG("\n"); DMSG("Time to memcpy the data");
 				// Copy the page data.
