@@ -268,6 +268,10 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				static int number_of_times = 30;
 				if(number_of_times-- <= 0) {
 					DMSG("Time to stop execution");
+					
+					// Reset
+					number_of_times = 30;
+
 					// Checkpoint all registers
 					for(int i = 0; i < 31; i++) {
 						checkpoint->regs.regs[i] = regs->x[i];
