@@ -298,6 +298,8 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				checkpoint->regs.entry_addr = regs->elr;
 				// Checkpoint the stack pointer
 				checkpoint->regs.stack_addr = regs->sp_el0;
+				// Checkpoint back pstate
+				checkpoint->regs.pstate = regs->spsr;
 
 				// Checkpoint back tpidr_el0
 				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
