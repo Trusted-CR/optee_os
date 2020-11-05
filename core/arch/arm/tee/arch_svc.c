@@ -270,8 +270,8 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 				if(max_number_of_prints-- <= 0)
 					stop_execution = true;
-
-				return true;
+				else
+					return true;
 			} else if(scn == 101) {
 				uint64_t * s = regs->x[0];
 				DMSG("syscall nanosleep handled: %llu seconds", *s);
