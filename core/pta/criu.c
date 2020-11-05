@@ -79,6 +79,14 @@ static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * js
 		} else if(jsoneq(json, &tokens[i], "pstate") == 0) { 
 			if(tokens[i+1].type == JSMN_STRING)
 				checkpoint->regs.pstate = strtoul(json + tokens[i+1].start, NULL, 16);
+		// Parse FPSR register
+		} else if(jsoneq(json, &tokens[i], "fpsr") == 0) { 
+			if(tokens[i+1].type == JSMN_PRIMITIVE)
+				checkpoint->regs.fpsr = strtoul(json + tokens[i+1].start, NULL, 10);
+		// Parse FPCR register
+		} else if(jsoneq(json, &tokens[i], "fpcr") == 0) { 
+			if(tokens[i+1].type == JSMN_PRIMITIVE)
+				checkpoint->regs.fpcr = strtoul(json + tokens[i+1].start, NULL, 10);
 		}
 	}
 
@@ -283,6 +291,10 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	utc->uctx.checkpoint = &checkpoint;
 
 	set_vfp_registers(checkpoint.regs.vregs, &utc->uctx.vfp);
+
+	utc->uctx.vfp.vfp.fpsr = checkpoint.regs.fpsr;
+	utc->uctx.vfp.vfp.fpcr = checkpoint.regs.fpcr;
+	
 	
 	tee_ta_push_current_session(s);
 

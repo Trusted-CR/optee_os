@@ -39,6 +39,8 @@ struct criu_checkpoint_regs {
 	uint64_t stack_addr;
 	uint64_t tpidr_el0_addr;
 	uint32_t pstate;
+	uint32_t fpsr;
+	uint32_t fpcr;
 };
 
 struct criu_checkpoint_dirty_pages {
