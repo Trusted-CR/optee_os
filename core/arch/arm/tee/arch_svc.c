@@ -253,10 +253,13 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 		if(ctx->uctx.checkpoint != NULL) {
 			struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
+			bool stop_execution = false;
+			static int max_number_of_prints = 30;
 			
 			if(scn == 93) {
 				DMSG("syscall sys_exit handled");
 				scn = 0;
+				stop_execution = true;
 			} else if (scn == 64) {
 				char temp_string[regs->x[2]+1];
 				memcpy(temp_string, regs->x[1], regs->x[2]);
@@ -265,46 +268,9 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 				set_svc_retval(regs, 0);
 
-				static int number_of_times = 30;
-				if(number_of_times-- <= 0) {
-					DMSG("Time to stop execution");
-					
-					// Reset
-					number_of_times = 30;
+				if(max_number_of_prints-- <= 0)
+					stop_execution = true;
 
-					// Checkpoint all registers
-					for(int i = 0; i < 31; i++) {
-						checkpoint->regs.regs[i] = regs->x[i];
-					}
-
-					// Checkpoint the program counter
-					checkpoint->regs.entry_addr = regs->elr;
-					// Checkpoint the stack pointer
-					checkpoint->regs.stack_addr = regs->sp_el0;
-
-					// Checkpoint back tpidr_el0
-					asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
-
-					// Temporarily enable vfp to retrieve registers
-					bool vfp_enabled = true;
-					if(!vfp_is_enabled()) {
-						// To restore the original vfp state after reading the registers.
-						vfp_enabled = false;
-						
-						// Temporarily enable to retrieve registers.
-						vfp_enable();
-					}
-
-					// Store vfp registers
-					vfp_save_extension_regs(checkpoint->regs.vregs);
-
-					// vfp was disabled beforehand, so disable it again.
-					if(!vfp_enabled)
-						vfp_disable();
-
-					// Temporarily to test returning to the normal world, otherwise it would keep running
-					return TEE_SCN_RETURN;
-				}
 				return true;
 			} else if(scn == 101) {
 				uint64_t * s = regs->x[0];
@@ -312,6 +278,49 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				// mdelay(*s * 1000);
 				set_svc_retval(regs, 0);
 				return true;
+			} else {
+				DMSG("Unknown system call: %d - let's checkpoint back", scn);
+				stop_execution = true;
+			}
+
+			if(stop_execution) {
+				DMSG("Time to stop execution");
+
+				// Reset
+				max_number_of_prints = 30;
+
+				// Checkpoint all registers
+				for(int i = 0; i < 31; i++) {
+					checkpoint->regs.regs[i] = regs->x[i];
+				}
+
+				// Checkpoint the program counter
+				checkpoint->regs.entry_addr = regs->elr;
+				// Checkpoint the stack pointer
+				checkpoint->regs.stack_addr = regs->sp_el0;
+
+				// Checkpoint back tpidr_el0
+				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
+
+				// Temporarily enable vfp to retrieve registers
+				bool vfp_enabled = true;
+				if(!vfp_is_enabled()) {
+					// To restore the original vfp state after reading the registers.
+					vfp_enabled = false;
+					
+					// Temporarily enable to retrieve registers.
+					vfp_enable();
+				}
+
+				// Store vfp registers
+				vfp_save_extension_regs(checkpoint->regs.vregs);
+
+				// vfp was disabled beforehand, so disable it again.
+				if(!vfp_enabled)
+					vfp_disable();
+
+				// Temporarily to test returning to the normal world, otherwise it would keep running
+				return TEE_SCN_RETURN;
 			}
 		}
 	}
