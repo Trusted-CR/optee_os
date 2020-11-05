@@ -75,6 +75,10 @@ static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * js
 		} else if(jsoneq(json, &tokens[i], "tls") == 0) { 
 			if(tokens[i+1].type == JSMN_PRIMITIVE)
 				checkpoint->regs.tpidr_el0_addr = strtoul(json + tokens[i+1].start, NULL, 10);
+		// Parse the processor state flags
+		} else if(jsoneq(json, &tokens[i], "pstate") == 0) { 
+			if(tokens[i+1].type == JSMN_STRING)
+				checkpoint->regs.pstate = strtoul(json + tokens[i+1].start, NULL, 16);
 		}
 	}
 
@@ -180,13 +184,13 @@ static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	return utc;
 }
 
-static void jump_to_user_mode(unsigned long entry_func, unsigned long user_sp, uint64_t tpidr_el0_addr, uint64_t * regs) {
+static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigned long user_sp, uint64_t tpidr_el0_addr, uint64_t * regs) {
 	uint32_t exit_status0 = 0;
 	uint32_t exit_status1 = 0;
 
 	// Restore the tpidr_el0 register
 	asm("msr tpidr_el0, %0" : : "r" (tpidr_el0_addr));
-	criu_thread_enter_user_mode(entry_func, user_sp, regs, &exit_status0, &exit_status1);
+	criu_thread_enter_user_mode(pstate, entry_func, user_sp, regs, &exit_status0, &exit_status1);
 }
 
 static void cleanup_allocations(struct tee_ta_session * s, struct user_ta_ctx * utc) {
@@ -315,7 +319,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	DMSG("\n\nCRIU - RUN! Entry address: %p", (void *) checkpoint.regs.entry_addr);
 	
-	jump_to_user_mode(utc->entry_func, utc->ldelf_stack_ptr, checkpoint.regs.tpidr_el0_addr, checkpoint.regs.regs);
+	jump_to_user_mode(checkpoint.regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint.regs.tpidr_el0_addr, checkpoint.regs.regs);
 
 	DMSG("CRIU - COPYING DATA BACK");
 

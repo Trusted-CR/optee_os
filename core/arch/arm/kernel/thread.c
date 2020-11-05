@@ -1272,7 +1272,7 @@ static void set_ctx_regs(struct thread_ctx_regs *regs, unsigned long a0,
 #endif
 }
 
-uint32_t criu_thread_enter_user_mode(unsigned long entry_func, 
+uint32_t criu_thread_enter_user_mode(uint32_t pstate, unsigned long entry_func, 
 		unsigned long user_sp, uint64_t * r, uint32_t *exit_status0, 
 		uint32_t *exit_status1)
 {
@@ -1290,7 +1290,9 @@ uint32_t criu_thread_enter_user_mode(unsigned long entry_func,
 		*exit_status1 = 0xbadbadba;
 		return 0;
 	}
-
+	
+	spsr = pstate;
+	
 	exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
 	/*
 	 * We're using the per thread location of saved context registers
