@@ -566,7 +566,6 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			vfp_disable();
 			handle_user_ta_panic(&ai);
 		}
-#endif
 		break;
 	}
 
