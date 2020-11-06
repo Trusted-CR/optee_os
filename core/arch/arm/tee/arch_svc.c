@@ -314,14 +314,10 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 					vfp_enable();
 				}
 
-				uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_FOREIGN_INTR);
-
 				// Checkpoint back the FPCR register
 				checkpoint->regs.fpcr = read_fpcr();
 				// Checkpoint back the FPSR register
 				checkpoint->regs.fpsr = read_fpsr();
-
-				thread_unmask_exceptions(exceptions);
 
 				// Store vfp registers
 				vfp_save_extension_regs(checkpoint->regs.vregs);
