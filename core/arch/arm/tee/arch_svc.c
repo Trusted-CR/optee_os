@@ -314,13 +314,13 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 					vfp_enable();
 				}
 
-				// Store vfp registers
-				vfp_save_extension_regs(checkpoint->regs.vregs);
-
 				// Checkpoint back the FPCR register
 				checkpoint->regs.fpcr = read_fpcr();
 				// Checkpoint back the FPSR register
 				checkpoint->regs.fpsr = read_fpsr();
+
+				// Store vfp registers
+				vfp_save_extension_regs(checkpoint->regs.vregs);
 
 				// vfp was disabled beforehand, so disable it again.
 				if(!vfp_enabled)
