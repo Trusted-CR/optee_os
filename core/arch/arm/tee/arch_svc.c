@@ -261,12 +261,14 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				scn = 0;
 				stop_execution = true;
 			} else if (scn == 64) {
-				char temp_string[regs->x[2]+1];
-				memcpy(temp_string, regs->x[1], regs->x[2]);
-				temp_string[regs->x[2]] = 0;
+				int num_of_bytes = regs->x[2];
+				char temp_string[num_of_bytes+1];
+				memcpy(temp_string, regs->x[1], num_of_bytes);
+				temp_string[num_of_bytes+1] = 0;
 				DMSG("syscall write handled: %s", temp_string);
 
-				set_svc_retval(regs, 0);
+				// On success, the number of bytes written is returned
+				set_svc_retval(regs, num_of_bytes);
 
 				if(max_number_of_prints-- <= 0)
 					stop_execution = true;
