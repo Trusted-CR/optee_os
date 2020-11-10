@@ -14,21 +14,21 @@ fi
 echo "PID $1 checkpointed!"
 
 echo -e "\nCRIT Decoding"
-echo -n "Decoding core-$pid.img... "
+echo -e -n "Decoding core-$pid.img..."
 ./crit.sh decode -i checkpoint/core-$pid.img --pretty > core-$pid.txt
-echo "done!"
+echo -e "\tdone!"
 
-echo -n "Decoding pagemap-$pid.img... "
+echo -e -n "Decoding pagemap-$pid.img..."
 ./crit.sh decode -i checkpoint/pagemap-$pid.img --pretty > pagemap-$pid.txt
-echo "done!"
+echo -e "\tdone!"
 
-echo -n "Decoding mm-$pid.img... "
+echo -e -n "Decoding mm-$pid.img..."
 ./crit.sh decode -i checkpoint/mm-$pid.img --pretty > mm-$pid.txt
-echo "done!"
+echo -e "\t\tdone!"
 
-echo -n "Copying pagedata... "
+echo -n "Copying pagedata..."
 cp checkpoint/pages-1.img pages-1.img
-echo "done!"
+echo -e "\t\tdone!"
 
 
 
@@ -39,17 +39,17 @@ echo -e "\n\nLinux - OP-TEE App Migrator"
 
 
 echo -e "\n\nCRIT Encoding"
-echo -e -n "Encoding modfied core-$pid.img... "
+echo -e -n "Encoding modfied core-$pid.img..."
 ./crit.sh encode -i modified_core.txt > checkpoint/core-$pid.img
-echo "done!"
+echo -e "\tdone!"
 
-echo -n "Encoding modfied pagemap-$pid.img... "
+echo -e -n "Encoding modfied pagemap-$pid.img..."
 ./crit.sh encode -i modified_pagemap.txt > checkpoint/pagemap-$pid.img
-echo "done!"
+echo -e "\tdone!"
 
-echo -n "Copying back pagedata... "
+echo -e -n "Copying back pagedata..."
 cp -rf modified_pages-1.img checkpoint/pages-1.img
-echo "done!"
+echo -e "\t\tdone!"
 
 echo -e "\nCRIU"
 echo "Restoring the updated checkpoint"
