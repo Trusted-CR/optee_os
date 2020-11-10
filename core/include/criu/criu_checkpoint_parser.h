@@ -3,8 +3,8 @@
 
 #include <string.h>
 #include <stdint.h>
-#include <criu/criu_checkpoint.h>
-#include <criu/jsmn.h>
+#include "criu/criu_checkpoint.h"
+#include "criu/jsmn.h"
 #include <sys/queue.h>
 
 #ifndef DMSG
