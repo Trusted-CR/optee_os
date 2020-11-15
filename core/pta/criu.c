@@ -22,6 +22,7 @@
 
 #define CRIU_LOAD_CHECKPOINT	0
 #define CRIU_CHECKPOINT_BACK	1
+#define CRIU_CONTINUE_EXECUTION	2
 
 static struct criu_checkpoint * checkpoint = NULL;
 static struct tee_ta_session *s = NULL; 
@@ -392,6 +393,8 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 
 	TEE_Param * binaryData = &params[0];
 
+	tee_ta_push_current_session(s);
+
 	long index = 0;
 	memcpy(binaryData->memref.buffer, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
 	index += sizeof(struct criu_checkpoint_regs);
@@ -420,6 +423,8 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 		}
 	}
 
+	tee_ta_pop_current_session();
+
 	return TEE_SUCCESS;
 }
 
@@ -446,13 +451,31 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 	
 	// LOAD CHECKPOINT DATA
 	load_checkpoint_data(&params[0], &params[1]);
-	char message[] = "hello from mitchell";
- 
-	memcpy(params[0].memref.buffer, message, 
-			(params[0].memref.size >= sizeof(message) 
-			? sizeof(message) : params[0].memref.size));
-	
-	IMSG("Changed value to: \"%s\"", (char *) params[0].memref.buffer);
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result criu_continue_execution(uint32_t param_types,
+			     TEE_Param params[TEE_NUM_PARAMS]) {
+	DMSG("Continue execution");
+
+	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
+						TEE_PARAM_TYPE_MEMREF_INOUT,
+						TEE_PARAM_TYPE_NONE,
+						TEE_PARAM_TYPE_NONE);
+
+	if (param_types != exp_param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+		
+	DMSG("before push");
+	tee_ta_push_current_session(s);
+
+	DMSG("CRIU - SET CTX!");
+	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
+
+	jump_to_user_mode(checkpoint->regs.pstate, checkpoint->regs.entry_addr, checkpoint->regs.stack_addr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
+
+	tee_ta_pop_current_session();
 
 	return TEE_SUCCESS;
 }
@@ -469,6 +492,8 @@ static TEE_Result invoke_command(void *psess __unused,
 		return criu_load_checkpoint(ptypes, params);
 	case CRIU_CHECKPOINT_BACK:
 		return criu_checkpoint_back(ptypes, params);
+	case CRIU_CONTINUE_EXECUTION:
+		return criu_continue_execution(ptypes, params);
 	default:
 		break;
 	}

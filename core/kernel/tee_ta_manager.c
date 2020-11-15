@@ -828,12 +828,18 @@ static void update_current_ctx(struct thread_specific_data *tsd)
 			ctx = s->ctx;
 	}
 
-	if (tsd->ctx != ctx)
-		tee_mmu_set_ctx(ctx);
+	if (tsd->ctx != ctx) {
+		if(is_user_ta_ctx(ctx) && to_user_ta_ctx(ctx)->uctx.is_criu_checkpoint) {
+			criu_tee_mmu_set_ctx(ctx);
+		} else {
+			tee_mmu_set_ctx(ctx);
+		}
+	}
+
 	/*
 	 * If current context is of user mode, then it has to be active too.
 	 */
-	if (is_user_mode_ctx(ctx) != core_mmu_user_mapping_is_active())
+	if (is_user_mode_ctx(ctx) && !to_user_mode_ctx(ctx)->is_criu_checkpoint && !core_mmu_user_mapping_is_active())
 		panic("unexpected active mapping");
 }
 
