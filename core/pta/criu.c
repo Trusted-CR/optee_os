@@ -21,6 +21,7 @@
 			{ 0x87, 0x94, 0x10, 0x02, 0xa5, 0xd5, 0xc6, 0x1d } }
 
 #define CRIU_LOAD_CHECKPOINT	0
+#define CRIU_CHECKPOINT_BACK	1
 
 static struct criu_checkpoint * checkpoint = NULL;
 static struct tee_ta_session *s = NULL; 
@@ -372,7 +373,24 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	
 	jump_to_user_mode(checkpoint->regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
 
+	tee_ta_pop_current_session();
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result criu_checkpoint_back(uint32_t param_types,
+			     TEE_Param params[TEE_NUM_PARAMS]) {
 	DMSG("CRIU - COPYING DATA BACK");
+
+	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
+						TEE_PARAM_TYPE_MEMREF_INOUT,
+						TEE_PARAM_TYPE_NONE,
+						TEE_PARAM_TYPE_NONE);
+
+	if (param_types != exp_param_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	TEE_Param * binaryData = &params[0];
 
 	long index = 0;
 	memcpy(binaryData->memref.buffer, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
@@ -383,6 +401,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	
 	dirty_pages_info->dirty_page_count = 0;
 	
+	struct criu_pagemap_entry_tracker * entry = NULL;
 	TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
 		if(entry->dirty) {
 			DMSG("GOT A DIRTY ENTRY HERE: %p - %p - %d", entry->entry.vaddr_start, entry->entry.vaddr_start + (entry->entry.nr_pages * SMALL_PAGE_SIZE), entry->entry.nr_pages);
@@ -400,8 +419,6 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 			index += entry->entry.nr_pages * SMALL_PAGE_SIZE;
 		}
 	}
-
-	tee_ta_pop_current_session();
 
 	return TEE_SUCCESS;
 }
@@ -450,6 +467,8 @@ static TEE_Result invoke_command(void *psess __unused,
 	switch (cmd) {
 	case CRIU_LOAD_CHECKPOINT:
 		return criu_load_checkpoint(ptypes, params);
+	case CRIU_CHECKPOINT_BACK:
+		return criu_checkpoint_back(ptypes, params);
 	default:
 		break;
 	}
