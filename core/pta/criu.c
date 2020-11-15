@@ -24,6 +24,7 @@
 
 static struct criu_checkpoint * checkpoint = NULL;
 static struct tee_ta_session *s = NULL; 
+static struct user_ta_ctx * utc = NULL;
 
 static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
 	if(checkpoint == NULL) {
@@ -204,8 +205,8 @@ static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigne
 	criu_thread_enter_user_mode(pstate, entry_func, user_sp, regs, &exit_status0, &exit_status1);
 }
 
-static void cleanup_allocations(struct tee_ta_session ** s, struct user_ta_ctx * utc) {
-	// Delete the user TA again
+static void free_utc(struct user_ta_ctx ** u) {
+	struct user_ta_ctx * utc = *u;
 	struct core_mmu_map_l1_entry * e = NULL;
 	if(!TAILQ_EMPTY(&utc->uctx.map.l1_entries)) {
 		TAILQ_FOREACH_REVERSE(e, &utc->uctx.map.l1_entries, core_mmu_map_l1_entries, link) {
@@ -218,8 +219,8 @@ static void cleanup_allocations(struct tee_ta_session ** s, struct user_ta_ctx *
 	pgt_flush_ctx(&utc->uctx.ctx);
 	TAILQ_REMOVE(&tee_ctxes, &utc->uctx.ctx, link);
 	criu_free_utc(utc);
-	free(*s);
-	*s = NULL;
+
+	*u = NULL;
 }
 
 static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct criu_vm_area * area) {
@@ -316,7 +317,11 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	}
 
 	// Create the user TA
-	struct user_ta_ctx * utc = create_user_ta_ctx(&uuid);
+	if(utc != NULL) {
+		free_utc(&utc);
+	}
+
+	utc = create_user_ta_ctx(&uuid);
 	if(utc == NULL)
 		return TEE_ERROR_GENERIC;
 
@@ -398,8 +403,6 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	tee_ta_pop_current_session();
 
-	cleanup_allocations(&s, utc);
-
 	return TEE_SUCCESS;
 }
 
@@ -466,6 +469,11 @@ static void close_session(void *sess_ctx) {
 
 	if(checkpoint != NULL)
 		free_checkpoint(&checkpoint);
+
+
+	if(utc != NULL) {
+		free_utc(&utc);
+	}
 
 	if(s != NULL) {
 		free(s);
