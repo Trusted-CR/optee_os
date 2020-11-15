@@ -22,6 +22,8 @@
 
 #define CRIU_LOAD_CHECKPOINT	0
 
+static struct criu_checkpoint * checkpoint = NULL;
+
 static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
 	if(checkpoint == NULL) {
 		DMSG("Error: criu_checkpoint struct is NULL");
@@ -248,6 +250,25 @@ void copy_vm_area_data(struct criu_vm_area * area) {
 		memcpy((void *)area->vm_start, area->original_data + area->offset, area->vm_end - area->vm_start);
 }
 
+static void free_checkpoint(struct criu_checkpoint ** check) {
+	struct criu_pagemap_entry_tracker * entry = NULL;
+	struct criu_checkpoint * c = *check;
+
+	TAILQ_FOREACH(entry, &c->pagemap_entries, link) {
+		// Free all allocated criu_pagemap_entry structs
+		free(entry);
+	}
+
+	// Free all allocated criu_vm_area structs
+	if(c->vm_areas != NULL)
+		free(c->vm_areas);
+
+	free(c);
+
+	//Reset the original pointer to NULL.
+	*check = NULL;
+}
+
 static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binaryDataInformation) {
 	TEE_Result res;
 	TEE_UUID uuid = CHECKPOINT_UUID;
@@ -263,7 +284,11 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	s->ref_count = 1;
 
 	struct checkpoint_file * checkpoint_file_var = binaryDataInformation->memref.buffer;
-	struct criu_checkpoint * checkpoint = calloc(1, sizeof(struct criu_checkpoint));
+	
+	if(checkpoint != NULL)
+		free_checkpoint(&checkpoint);
+	
+	checkpoint = calloc(1, sizeof(struct criu_checkpoint));	
 	checkpoint->l2_tables_index = 0;
 
 	TAILQ_INIT(&checkpoint->pagemap_entries);
@@ -362,19 +387,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 			memcpy(binaryData->memref.buffer + index, entry->entry.vaddr_start, entry->entry.nr_pages * SMALL_PAGE_SIZE);
 			index += entry->entry.nr_pages * SMALL_PAGE_SIZE;
 		}
-
-		// Free all allocated criu_pagemap_entry structs
-		free(entry);
 	}
 
 	tee_ta_pop_current_session();
-
-
-	// Free all allocated criu_vm_area structs
-	if(checkpoint->vm_areas != NULL)
-		free(checkpoint->vm_areas);
-	
-	free(checkpoint);
 
 	cleanup_allocations(s, utc);
 
@@ -441,6 +456,10 @@ static TEE_Result open_session(uint32_t param_types __unused,
 
 static void close_session(void *sess_ctx) {
 	(void) sess_ctx; // Suspress unused variable warning
+
+	if(checkpoint != NULL)
+		free_checkpoint(&checkpoint);
+
 	DMSG("Closed session to %s", TA_NAME);
 }
 
