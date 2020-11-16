@@ -335,7 +335,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	utc->uctx.vfp.vfp.fpsr = checkpoint->regs.fpsr;
 	utc->uctx.vfp.vfp.fpcr = checkpoint->regs.fpcr;
-	
+	utc->uctx.vfp.lazy_saved = true;
+	utc->uctx.vfp.saved = true;
 	
 	tee_ta_push_current_session(s);
 
