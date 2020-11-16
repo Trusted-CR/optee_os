@@ -102,4 +102,14 @@ struct checkpoint_file_data {
 	char * buffer;
 };
 
+struct criu_fd_info {
+	int id;
+	int fd;
+};
+
+struct criu_file {
+	int id;
+	char * name;
+};
+
 #endif /*__CRIU_CHECKPOINT_H*/
