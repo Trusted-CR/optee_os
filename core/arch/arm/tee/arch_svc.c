@@ -257,6 +257,8 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			static int max_number_of_prints = 30;
 			
 			if(scn == 56) {
+				DMSG("syscall sys_openat catched: dfd:%d - filename:%s - flags:%p - mode:%p",
+						regs->x[0], regs->x[1], regs->x[2], regs->x[3]);
 				stop_execution = true;
 				checkpoint->result = CRIU_SYSCALL_OPENAT;
 			} else if(scn == 93) {

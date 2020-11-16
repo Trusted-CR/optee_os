@@ -376,8 +376,15 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	jump_to_user_mode(checkpoint->regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
 
 	// Copy the return value in the buffer.
-	memcpy(binaryData->memref.buffer, &checkpoint->result, sizeof(enum criu_return_types));
-	memcpy(binaryData->memref.buffer + sizeof(enum criu_return_types), &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
+	long index = 0;
+	memcpy(binaryData->memref.buffer, &checkpoint->result, sizeof(enum criu_return_types)); 
+	index += sizeof(enum criu_return_types);
+	memcpy(binaryData->memref.buffer + index, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
+	index += sizeof(struct criu_checkpoint_regs);
+
+	if(checkpoint->result == CRIU_SYSCALL_OPENAT) {
+		strcpy(binaryData->memref.buffer + index, checkpoint->regs.regs[1]);
+	}
 	
 	tee_ta_pop_current_session();
 

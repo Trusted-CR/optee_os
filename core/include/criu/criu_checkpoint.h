@@ -77,11 +77,13 @@ enum criu_pte_flags {
 };
 
 enum checkpoint_file_types { 
-	CORE_FILE = 0,				// core-*.img
+	CORE_FILE = 0,			// core-*.img
 	MM_FILE,				// mm-*.img
 	PAGEMAP_FILE,			// pagemap-*.img
 	PAGES_BINARY_FILE,		// pages-*.img
-	EXECUTABLE_BINARY_FILE	// The binary itself that is checkpointed
+	EXECUTABLE_BINARY_FILE,	// The binary itself that is checkpointed
+	FD_INFO_FILE,			// fd_info-*.img
+	FILES_FILE				// files.img file
 };
 
 // Subtract the last enum from the first to determine the number of 
