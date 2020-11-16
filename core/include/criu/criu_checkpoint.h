@@ -48,7 +48,17 @@ struct criu_checkpoint_dirty_pages {
 	uint32_t offset;
 };
 
+enum criu_return_types {
+	CRIU_IDLE,
+	CRIU_RUNNING,
+	CRIU_SYSCALL_EXIT,
+	CRIU_SYSCALL_OPENAT,
+	CRIU_SYSCALL_UNSUPPORTED,
+	CRIU_DATA_DIRTY_CHECKPOINT
+};
+
 struct criu_checkpoint {
+	enum criu_return_types result;
 	struct criu_vm_area * vm_areas;
 	uint32_t vm_area_count;
 	struct criu_pagemap_entries pagemap_entries;

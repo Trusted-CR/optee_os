@@ -256,10 +256,14 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			bool stop_execution = false;
 			static int max_number_of_prints = 30;
 			
-			if(scn == 93) {
+			if(scn == 56) {
+				stop_execution = true;
+				checkpoint->result = CRIU_SYSCALL_OPENAT;
+			} else if(scn == 93) {
 				DMSG("syscall sys_exit handled");
 				scn = 0;
 				stop_execution = true;
+				checkpoint->result = CRIU_SYSCALL_EXIT;
 			} else if (scn == 64) {
 				int num_of_bytes = regs->x[2];
 				char temp_string[num_of_bytes+1];
@@ -283,6 +287,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			} else {
 				DMSG("Unknown system call: %d - let's checkpoint back", scn);
 				stop_execution = true;
+				checkpoint->result = CRIU_SYSCALL_UNSUPPORTED;
 			}
 
 			if(stop_execution) {
