@@ -254,19 +254,24 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		if(ctx->uctx.checkpoint != NULL) {
 			struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
 			bool stop_execution = false;
-			static int max_number_of_prints = 30;
+			static int max_number_of_prints = 10;
 			
-			if(scn == 56) {
+			if(scn == CRIU_SYSCALL_FSTAT) {
+				DMSG("syscall sys_fstat catched: fd:%d - location:%p",
+						regs->x[0], regs->x[1]);
+				stop_execution = true;
+				checkpoint->result = CRIU_SYSCALL_FSTAT;
+			}else if (scn == CRIU_SYSCALL_OPENAT) {
 				DMSG("syscall sys_openat catched: dfd:%d - filename:%s - flags:%p - mode:%p",
 						regs->x[0], regs->x[1], regs->x[2], regs->x[3]);
 				stop_execution = true;
 				checkpoint->result = CRIU_SYSCALL_OPENAT;
-			} else if(scn == 93) {
+			} else if(scn == CRIU_SYSCALL_EXIT) {
 				DMSG("syscall sys_exit handled");
 				scn = 0;
 				stop_execution = true;
 				checkpoint->result = CRIU_SYSCALL_EXIT;
-			} else if (scn == 64) {
+			} else if (scn == CRIU_SYSCALL_WRITE) {
 				int num_of_bytes = regs->x[2];
 				char temp_string[num_of_bytes+1];
 				memcpy(temp_string, regs->x[1], num_of_bytes);
@@ -280,7 +285,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 					stop_execution = true;
 				else
 					return true;
-			} else if(scn == 115) {
+			} else if(scn == CRIU_SYSCALL_NANOSLEEP) {
 				uint64_t * s = regs->x[2];
 				DMSG("syscall clock_nanosleep handled: %llu seconds", *s);
 				mdelay(*s * 1000);
