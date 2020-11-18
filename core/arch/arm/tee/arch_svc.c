@@ -274,9 +274,14 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			} else if (scn == CRIU_SYSCALL_WRITE) {
 				int num_of_bytes = regs->x[2];
 				char temp_string[num_of_bytes+1];
+				int fd = regs->x[0];
 				memcpy(temp_string, regs->x[1], num_of_bytes);
 				temp_string[num_of_bytes+1] = 0;
-				DMSG("syscall write handled: %s", temp_string);
+				if(fd < 3) {
+					DMSG("syscall write handled: fd:%d - %s", fd, temp_string);
+				} else {
+					DMSG("Will need to handle file write to fd: %d", fd);
+				}
 
 				// On success, the number of bytes written is returned
 				set_svc_retval(regs, num_of_bytes);
