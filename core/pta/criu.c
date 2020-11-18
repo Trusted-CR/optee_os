@@ -492,6 +492,10 @@ static TEE_Result criu_continue_execution(uint32_t param_types,
 	index += sizeof(struct criu_checkpoint_regs);
 
 	switch(*return_type) {
+		case CRIU_SYSCALL_CLOSE:
+			checkpoint->regs.regs[0] = *return_value;
+			DMSG("CLOSE returned with res: %d", *return_value);
+			break;
 		case CRIU_SYSCALL_OPENAT:
 			checkpoint->regs.regs[0] = *return_value;
 			DMSG("OPENAT returned with res: %d", *return_value);
