@@ -256,7 +256,12 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			bool stop_execution = false;
 			static int max_number_of_prints = 10;
 			
-			if(scn == CRIU_SYSCALL_FSTAT) {
+			if(scn == CRIU_SYSCALL_READ) {
+				DMSG("syscall sys_read catched: fd:%d - location:%p - count:%d",
+						regs->x[0], regs->x[1], regs->x[2]);
+				stop_execution = true;
+				checkpoint->result = CRIU_SYSCALL_READ;
+			} else if(scn == CRIU_SYSCALL_FSTAT) {
 				DMSG("syscall sys_fstat catched: fd:%d - location:%p",
 						regs->x[0], regs->x[1]);
 				stop_execution = true;

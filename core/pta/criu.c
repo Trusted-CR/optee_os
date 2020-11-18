@@ -486,13 +486,18 @@ static TEE_Result criu_continue_execution(uint32_t param_types,
 	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
 	enum criu_return_types * return_type = params[0].memref.buffer;
+	long index = 0;
 	uint64_t * return_value = params[0].memref.buffer + sizeof(enum criu_return_types);
+	index += sizeof(enum criu_return_types);
+	index += sizeof(struct criu_checkpoint_regs);
+
 	switch(*return_type) {
 		case CRIU_SYSCALL_OPENAT:
 			checkpoint->regs.regs[0] = *return_value;
 			DMSG("OPENAT returned with res: %d", *return_value);
 			break;
 		case CRIU_SYSCALL_FSTAT:
+		{
 			checkpoint->regs.regs[0] = *return_value;
 			DMSG("FSTAT returned with res: %d", *return_value);
 			DMSG("copy data back to address: %p", checkpoint->regs.regs[1]);
@@ -501,6 +506,19 @@ static TEE_Result criu_continue_execution(uint32_t param_types,
 			void * stat = params[0].memref.buffer + sizeof(enum criu_return_types) + sizeof(struct criu_checkpoint_regs) + sizeof(uint64_t);
 			memcpy(dest, stat, *size);
 			break;
+		}
+		case CRIU_SYSCALL_READ:
+		{
+			checkpoint->regs.regs[0] = *return_value;
+			DMSG("READ returned with res: %d", *return_value);
+			index += sizeof(uint64_t);
+			char * test = params[0].memref.buffer + index;
+			void * dest = checkpoint->regs.regs[1];
+			uint64_t size = checkpoint->regs.regs[2];
+			DMSG("Going to cpy to: %p, size:%d\n", dest, size);
+			memcpy(dest, test, size);
+			break;
+		}
 		default:
 			break;
 	}
@@ -508,7 +526,7 @@ static TEE_Result criu_continue_execution(uint32_t param_types,
 	jump_to_user_mode(checkpoint->regs.pstate, checkpoint->regs.entry_addr, checkpoint->regs.stack_addr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
 
 	// Copy the return value in the buffer.
-	long index = 0;
+	index = 0;
 	memcpy(params[0].memref.buffer, &checkpoint->result, sizeof(enum criu_return_types)); 
 	DMSG("the result was: %d\n", checkpoint->result);
 	index += sizeof(enum criu_return_types);
