@@ -266,11 +266,21 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 						regs->x[0], regs->x[1], regs->x[2]);
 				stop_execution = true;
 				checkpoint->result = CRIU_SYSCALL_READ;
+
+				if(regs->x[0] == 0) {
+					DMSG("We cannot handle stdin, migrate back");
+					checkpoint->result = CRIU_SYSCALL_UNSUPPORTED;
+				}
 			} else if(scn == CRIU_SYSCALL_FSTAT) {
 				DMSG("syscall sys_fstat catched: fd:%d - location:%p",
 						regs->x[0], regs->x[1]);
 				stop_execution = true;
 				checkpoint->result = CRIU_SYSCALL_FSTAT;
+			} else if(scn == CRIU_SYSCALL_NEWFSTATAT) {
+				DMSG("syscall sys_newfstatat catched: fd:%d - filename:%s - location:%p - flag:%d",
+						regs->x[0], regs->x[1], regs->x[2], regs->x[3]);
+				stop_execution = true;
+				checkpoint->result = CRIU_SYSCALL_NEWFSTATAT;
 			}else if (scn == CRIU_SYSCALL_OPENAT) {
 				DMSG("syscall sys_openat catched: dfd:%d - filename:%s - flags:%p - mode:%p",
 						regs->x[0], regs->x[1], regs->x[2], regs->x[3]);

@@ -131,7 +131,7 @@ static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, char * json
 			if(tokens[i+1].type == JSMN_ARRAY) {
 				// Allocate the required number of VMA area structs
 				checkpoint->vm_area_count = tokens[++i].size; i++;
-				checkpoint->vm_areas = malloc(sizeof(struct criu_vm_area) * checkpoint->vm_area_count);
+				checkpoint->vm_areas = calloc(1, sizeof(struct criu_vm_area) * checkpoint->vm_area_count);
 
 				for(int y = 0; y < checkpoint->vm_area_count; y++, i += (tokens[i].size * 2) + 1) {
 					// Set the VMA addresses, offset and initialize the other fields.
@@ -511,6 +511,17 @@ static TEE_Result criu_continue_execution(uint32_t param_types,
 			memcpy(dest, stat, *size);
 			break;
 		}
+		case CRIU_SYSCALL_NEWFSTATAT:
+		{
+			checkpoint->regs.regs[0] = *return_value;
+			DMSG("NEWFSTAT returned with res: %d", *return_value);
+			DMSG("copy data back to address: %p", checkpoint->regs.regs[2]);
+			void * dest = checkpoint->regs.regs[2];
+			uint64_t * size = params[0].memref.buffer + sizeof(enum criu_return_types) + sizeof(struct criu_checkpoint_regs);
+			void * stat = params[0].memref.buffer + sizeof(enum criu_return_types) + sizeof(struct criu_checkpoint_regs) + sizeof(uint64_t);
+			memcpy(dest, stat, *size);
+			break;
+		}
 		case CRIU_SYSCALL_READ:
 		{
 			checkpoint->regs.regs[0] = *return_value;
@@ -537,7 +548,7 @@ static TEE_Result criu_continue_execution(uint32_t param_types,
 	memcpy(params[0].memref.buffer + index, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
 	index += sizeof(struct criu_checkpoint_regs);
 
-	if(checkpoint->result == CRIU_SYSCALL_OPENAT) {
+	if(checkpoint->result == CRIU_SYSCALL_OPENAT || checkpoint->result == CRIU_SYSCALL_NEWFSTATAT) {
 		strcpy(params[0].memref.buffer + index, checkpoint->regs.regs[1]);
 	}
 

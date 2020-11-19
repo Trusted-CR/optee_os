@@ -379,7 +379,7 @@ CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
 CFG_BOOT_SECONDARY_REQUEST ?= n
 
 # Default heap size for Core, 64 kB
-CFG_CORE_HEAP_SIZE ?= 65536
+CFG_CORE_HEAP_SIZE ?= 131072
 
 # Default size of nexus heap. 16 kB. Used only if CFG_VIRTUALIZATION
 # is enabled
