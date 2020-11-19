@@ -1358,6 +1358,48 @@ static struct tee_pager_pmem *tee_pager_get_page(enum tee_pager_area_type at)
 	return pmem;
 }
 
+static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
+	// Mark checkpoint page as dirty
+	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
+	if(is_user_mode_ctx(ctx)) {
+		struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
+		if(uctx->is_criu_checkpoint) {
+			struct criu_checkpoint * checkpoint = uctx->checkpoint;
+			vaddr_t dirty_address = ai->va & ~SMALL_PAGE_MASK;
+		
+			bool dirty_checkpoint_entry = false;
+
+			struct criu_vm_area * vm_areas;
+			for(int i = 0; i < checkpoint->vm_area_count; i++) {
+				if((checkpoint->vm_areas[i].vm_start <= ai->va) && (ai->va <= checkpoint->vm_areas[i].vm_end)) {
+					dirty_checkpoint_entry = true;
+					break;
+				}
+			}
+
+			if(dirty_checkpoint_entry) {
+				DMSG("Page fault - Marking page as dirty: %p", dirty_address);
+
+				struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
+				if(entry != NULL) {
+					entry->entry.vaddr_start = dirty_address;
+					entry->entry.nr_pages = 1;
+					entry->dirty = true;
+
+					TAILQ_INSERT_TAIL(&uctx->checkpoint->pagemap_entries, entry, link);
+				} else {
+					DMSG("OUT OF MEMORY!!");
+					panic();
+				}
+
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 static bool pager_update_permissions(struct tee_pager_area *area,
 			struct abort_info *ai, bool *handled)
 {
@@ -1417,47 +1459,14 @@ static bool pager_update_permissions(struct tee_pager_area *area,
 					       get_area_mattr(area->flags));
 				area_tlbi_entry(area, pgidx);
 
-
-
-
-
-
-
-				// Mark checkpoint page as dirty
-				struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
-				if(is_user_mode_ctx(ctx)) {
-					struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
-					if(uctx->is_criu_checkpoint) {
-						struct criu_checkpoint * checkpoint = uctx->checkpoint;
-						vaddr_t dirty_address = ai->va & ~SMALL_PAGE_MASK;
-					
-						bool dirty_checkpoint_entry = false;
-
-						struct criu_vm_area * vm_areas;
-						for(int i = 0; i < checkpoint->vm_area_count; i++) {
-							if((checkpoint->vm_areas[i].vm_start <= ai->va) && (ai->va <= checkpoint->vm_areas[i].vm_end)) {
-								dirty_checkpoint_entry = true;
-								break;
-							}
-						}
-
-						if(dirty_checkpoint_entry) {
-							DMSG("Page fault - Marking page as dirty: %p", dirty_address);
-
-							struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
-							entry->entry.vaddr_start = dirty_address;
-							entry->entry.nr_pages = 1;
-							entry->dirty = true;
-
-							TAILQ_INSERT_TAIL(&uctx->checkpoint->pagemap_entries, entry, link);
-						}
-					}
-				}
+				mark_checkpoint_areas_dirty(ai);
 			}
 		} else {
 			if (!(area->flags & TEE_MATTR_PW)) {
-				abort_print_error(ai);
-				panic();
+				if(!mark_checkpoint_areas_dirty(ai)) {
+					abort_print_error(ai);
+					panic();
+				}
 			}
 			if (!(attr & TEE_MATTR_PW)) {
 				FMSG("Dirty %p",
