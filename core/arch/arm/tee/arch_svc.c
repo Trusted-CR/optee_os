@@ -256,37 +256,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			bool stop_execution = false;
 			static int max_number_of_prints = 10;
 			
-			if(scn == CRIU_SYSCALL_CLOSE) {
-				DMSG("syscall sys_close catched: fd:%d",
-						regs->x[0]);
-				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_CLOSE;
-			} else if(scn == CRIU_SYSCALL_READ) {
-				DMSG("syscall sys_read catched: fd:%d - location:%p - count:%d",
-						regs->x[0], regs->x[1], regs->x[2]);
-				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_READ;
-
-				if(regs->x[0] == 0) {
-					DMSG("We cannot handle stdin, migrate back");
-					checkpoint->result = CRIU_SYSCALL_UNSUPPORTED;
-				}
-			} else if(scn == CRIU_SYSCALL_FSTAT) {
-				DMSG("syscall sys_fstat catched: fd:%d - location:%p",
-						regs->x[0], regs->x[1]);
-				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_FSTAT;
-			} else if(scn == CRIU_SYSCALL_NEWFSTATAT) {
-				DMSG("syscall sys_newfstatat catched: fd:%d - filename:%s - location:%p - flag:%d",
-						regs->x[0], regs->x[1], regs->x[2], regs->x[3]);
-				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_NEWFSTATAT;
-			}else if (scn == CRIU_SYSCALL_OPENAT) {
-				DMSG("syscall sys_openat catched: dfd:%d - filename:%s - flags:%p - mode:%p",
-						regs->x[0], regs->x[1], regs->x[2], regs->x[3]);
-				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_OPENAT;
-			} else if(scn == CRIU_SYSCALL_EXIT) {
+			if(scn == CRIU_SYSCALL_EXIT) {
 				DMSG("syscall sys_exit handled");
 				scn = 0;
 				stop_execution = true;
@@ -299,17 +269,17 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				temp_string[num_of_bytes+1] = 0;
 				if(fd < 3) {
 					DMSG("syscall write handled: fd:%d - %s", fd, temp_string);
+					// On success, the number of bytes written is returned
+					set_svc_retval(regs, num_of_bytes);
+
+					if(max_number_of_prints-- <= 0)
+						stop_execution = true;
+					else
+						return true;
 				} else {
 					DMSG("Will need to handle file write to fd: %d", fd);
-				}
-
-				// On success, the number of bytes written is returned
-				set_svc_retval(regs, num_of_bytes);
-
-				if(max_number_of_prints-- <= 0)
 					stop_execution = true;
-				else
-					return true;
+				}
 			} else if(scn == CRIU_SYSCALL_NANOSLEEP) {
 				uint64_t * s = regs->x[2];
 				DMSG("syscall clock_nanosleep handled: %llu seconds", *s);
