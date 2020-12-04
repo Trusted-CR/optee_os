@@ -1378,18 +1378,29 @@ static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
 			}
 
 			if(dirty_checkpoint_entry) {
-				DMSG("Page fault - Marking page as dirty: %p", dirty_address);
+				bool already_exists = false;
+				struct criu_pagemap_entry_tracker * entry = NULL;
+				TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
+					if(entry->entry.vaddr_start == dirty_address && entry->dirty) {
+						already_exists = true;
+						break;
+					}
+				}
 
-				struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
-				if(entry != NULL) {
-					entry->entry.vaddr_start = dirty_address;
-					entry->entry.nr_pages = 1;
-					entry->dirty = true;
+				if(!already_exists) {
+					DMSG("Page fault - Marking page as dirty: %p", dirty_address);
 
-					TAILQ_INSERT_TAIL(&uctx->checkpoint->pagemap_entries, entry, link);
-				} else {
-					DMSG("OUT OF MEMORY!!");
-					panic();
+					struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
+					if(entry != NULL) {
+						entry->entry.vaddr_start = dirty_address;
+						entry->entry.nr_pages = 1;
+						entry->dirty = true;
+
+						TAILQ_INSERT_TAIL(&uctx->checkpoint->pagemap_entries, entry, link);
+					} else {
+						DMSG("OUT OF MEMORY!!");
+						panic();
+					}
 				}
 
 				return true;
