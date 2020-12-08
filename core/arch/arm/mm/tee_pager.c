@@ -1677,17 +1677,24 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 			dsb_ishst();
 
 			if(copy_checkpoint_data) {
-				// DMSG("Time to memcpy the data");
+				pager_unlock(exceptions);
+				DMSG("Time to memcpy the data");
 				// Copy the page data.
 				if (entry != NULL) {
 					memcpy((void *)page_va, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
 					pmem->flags |= PMEM_FLAG_DIRTY;
 				} else if(vm_area_index != -1 && uctx != NULL) {
-					memcpy((void *)page_va, uctx->checkpoint->vm_areas[vm_area_index].original_data + uctx->checkpoint->vm_areas[vm_area_index].offset + (page_va - uctx->checkpoint->vm_areas[vm_area_index].vm_start), SMALL_PAGE_SIZE);
-					pmem->flags |= PMEM_FLAG_DIRTY;
+					// TODO: Data is not always coming from the binary file.. the data can be from other memory mapped files..
+					if((uctx->checkpoint->vm_areas[vm_area_index].status & VMA_FILE_PRIVATE)) {
+						memcpy((void *)page_va, uctx->checkpoint->vm_areas[vm_area_index].original_data + uctx->checkpoint->vm_areas[vm_area_index].offset + (page_va - uctx->checkpoint->vm_areas[vm_area_index].vm_start), SMALL_PAGE_SIZE);
+						pmem->flags |= PMEM_FLAG_DIRTY;
+					} else {
+						// Initialize the page to zero.
+						memset((void *)page_va, 0, SMALL_PAGE_SIZE);
+					}
 				}
 				
-				// DMSG("memcpy completed!");
+				exceptions = pager_lock(ai);
 			}
 		}
 
