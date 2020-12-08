@@ -318,6 +318,12 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		return TEE_ERROR_BAD_FORMAT;
 	}
 
+	// DMSG("\nAFTER PARSING CHECKPOINT FILES:\n");
+	// DMSG("Areas: %d", checkpoint->vm_area_count);
+	// for(int y = 0; y < checkpoint->vm_area_count; y++) {
+	// 	DMSG("area[%d]: %p-%p - orig: %p - offset: %p", y, checkpoint->vm_areas[y].vm_start, checkpoint->vm_areas[y].vm_end, checkpoint->vm_areas[y].original_data, checkpoint->vm_areas[y].offset);
+	// }
+
 	// Create the user TA
 	if(utc != NULL) {
 		free_utc(&utc);
