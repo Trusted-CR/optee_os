@@ -17,6 +17,8 @@
 #include <tee/tee_svc.h>
 #include <trace.h>
 
+#include "../kernel/vfp_private.h"
+
 #include "thread_private.h"
 
 enum fault_type {
@@ -516,8 +518,50 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 	default:
 		if (!abort_is_user_exception(ai))
 			abort_print(ai);
-		DMSG("[abort] Unhandled fault!");
+		DMSG("[abort] Unhandled fault!: pc: %p, va: %p", ai->pc, ai->va);
 		return FAULT_TYPE_IGNORE;
+	}
+}
+
+void checkpoint_back(struct thread_abort_regs *regs) {
+	struct thread_specific_data *tsd = thread_get_tsd();
+	if(is_user_ta_ctx(tsd->ctx)) {
+		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
+
+		if(ctx->uctx.checkpoint != NULL) {
+			struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
+			// Checkpoint the program counter
+			checkpoint->regs.entry_addr = regs->elr - 4; // Assuming svc 0x0 is 4 bytes
+			// Checkpoint the stack pointer
+			checkpoint->regs.stack_addr = regs->sp_el0;
+			// Checkpoint back pstate
+			checkpoint->regs.pstate = regs->spsr;
+
+			// Checkpoint back tpidr_el0
+			asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
+
+			// Temporarily enable vfp to retrieve registers
+			bool vfp_enabled = true;
+			if(!vfp_is_enabled()) {
+				// To restore the original vfp state after reading the registers.
+				vfp_enabled = false;
+				
+				// Temporarily enable to retrieve registers.
+				vfp_enable();
+			}
+
+			// Store vfp registers
+			vfp_save_extension_regs(checkpoint->regs.vregs);
+
+			// Checkpoint back the FPCR register
+			checkpoint->regs.fpcr = read_fpcr();
+			// Checkpoint back the FPSR register
+			checkpoint->regs.fpsr = read_fpsr();
+
+			// vfp was disabled beforehand, so disable it again.
+			if(!vfp_enabled)
+				vfp_disable();
+		}
 	}
 }
 
@@ -536,7 +580,8 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 		break;
 	case FAULT_TYPE_USER_TA_PANIC:
 		DMSG("ABORT AT PC %p - VA %p", ai.pc, ai.va);
-		DMSG("[abort] abort in User mode (TA will panic)");
+		DMSG("[abort] abort in User mode (TA will panic): pa %p - va %p", ai.pc, ai.va);
+		checkpoint_back(regs);
 		save_abort_info_in_tsd(&ai);
 		vfp_disable();
 		handle_user_ta_panic(&ai);
