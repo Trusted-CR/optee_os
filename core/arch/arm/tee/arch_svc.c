@@ -306,7 +306,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				}
 
 				// Checkpoint the program counter
-				checkpoint->regs.entry_addr = regs->elr;
+				checkpoint->regs.entry_addr = regs->elr - 4; // Assuming svc 0x0 is 4 bytes
 				// Checkpoint the stack pointer
 				checkpoint->regs.stack_addr = regs->sp_el0;
 				// Checkpoint back pstate
