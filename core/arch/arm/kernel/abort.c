@@ -469,8 +469,13 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 	}
 
 	if (ai->abort_type == ABORT_TYPE_UNDEF) {
-		if (abort_is_user_exception(ai))
+		if (abort_is_user_exception(ai)) {
+			struct thread_specific_data *tsd = thread_get_tsd();
+			if(is_user_ta_ctx(tsd->ctx) && to_user_ta_ctx(tsd->ctx)->uctx.is_criu_checkpoint) {
+				to_user_ta_ctx(tsd->ctx)->uctx.checkpoint->result = CRIU_UNDEFINED_ABORT;
+			}
 			return FAULT_TYPE_USER_TA_PANIC;
+		}
 		abort_print_error(ai);
 		panic("[abort] undefined abort (trap CPU)");
 	}
