@@ -1566,27 +1566,28 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 
 	bool copy_checkpoint_data = false;
 	bool copy_from_pagemap = false;
-	struct criu_vm_area * vm_area = NULL;
+	int vm_area_index = -1;
+	struct user_mode_ctx * uctx = NULL;
 	struct criu_pagemap_entry_tracker * entry = NULL;
 	if(!area) {		
 		struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 		if(is_user_mode_ctx(ctx)) {
-			struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
-			if(uctx->is_criu_checkpoint) {				
+			uctx = to_user_mode_ctx(ctx);
+			if(uctx->is_criu_checkpoint) {
 				// First check if the va address is valid within the vm areas range
-				vm_area = uctx->checkpoint->vm_areas;
-				for(int i = 0; i < uctx->checkpoint->vm_area_count; vm_area++) {
-					if(ai->va >= vm_area->vm_start &&
-					   ai->va <= vm_area->vm_end) {
-						DMSG("Pagefault %p happens within checkpoint VM entry! %p-%p", ai->va, vm_area->vm_start, vm_area->vm_end);
+				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
+					if(ai->va >= uctx->checkpoint->vm_areas[i].vm_start &&
+					   ai->va <= uctx->checkpoint->vm_areas[i].vm_end) {
+						DMSG("Pagefault %p happens within checkpoint VM entry! %p-%p", ai->va, uctx->checkpoint->vm_areas[i].vm_start, uctx->checkpoint->vm_areas[i].vm_end);
 						
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
 
 						// First try to map only one single page.
-						criu_alloc_and_map_ldelf_fobj(utc, 1, vm_area->protection, &page_va);
+						criu_alloc_and_map_ldelf_fobj(utc, 1, uctx->checkpoint->vm_areas[i].protection, &page_va);
 				
 						area = find_area(uctx->areas, ai->va);
 						copy_checkpoint_data = true;
+						vm_area_index = i;
 						break;
 					}
 				}
@@ -1681,8 +1682,8 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 				if (entry != NULL) {
 					memcpy((void *)page_va, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
 					pmem->flags |= PMEM_FLAG_DIRTY;
-				} else if(vm_area != NULL) {
-					memcpy((void *)page_va, vm_area->original_data + vm_area->offset + (page_va - vm_area->vm_start), SMALL_PAGE_SIZE);
+				} else if(vm_area_index != -1 && uctx != NULL) {
+					memcpy((void *)page_va, uctx->checkpoint->vm_areas[vm_area_index].original_data + uctx->checkpoint->vm_areas[vm_area_index].offset + (page_va - uctx->checkpoint->vm_areas[vm_area_index].vm_start), SMALL_PAGE_SIZE);
 					pmem->flags |= PMEM_FLAG_DIRTY;
 				}
 				
