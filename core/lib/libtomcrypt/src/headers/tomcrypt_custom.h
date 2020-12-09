@@ -582,6 +582,12 @@
    #define LTC_PBES
 #endif
 
+// Issue: https://github.com/libtom/libtomcrypt/issues/486
+#if defined(LTC_CLEAN_STACK)
+/* if you're sure that you want to use it, remove the line below */
+   #error LTC_CLEAN_STACK is considered as broken
+#endif
+
 #if defined(LTC_PELICAN) && !defined(LTC_RIJNDAEL)
    #error Pelican-MAC requires LTC_RIJNDAEL
 #endif
