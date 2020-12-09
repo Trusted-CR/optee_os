@@ -611,7 +611,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 				abort_print_error(&ai);
 				panic("unhandled pageable abort");
 			}
-			DMSG("[abort] abort in User mode (TA will panic)");
+			DMSG("[abort] abort in User mode (TA will panic): pa %p - va %p", ai.pc, ai.va);
 			save_abort_info_in_tsd(&ai);
 			vfp_disable();
 			handle_user_ta_panic(&ai);

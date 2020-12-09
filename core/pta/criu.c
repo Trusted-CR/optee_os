@@ -370,6 +370,15 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		pages_file_index += entry->entry.nr_pages;
 	}
 
+	// TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
+	// 	DMSG("entry vaddrstart: %p", entry->entry.vaddr_start);
+	// 	DMSG("entry nr_pages: %d", entry->entry.nr_pages);
+	// 	DMSG("entry file_page_index: %d", entry->entry.file_page_index);
+	// 	DMSG("entry buffer: %d", entry->buffer);
+	// 	DMSG("----------------------------------------------------------");
+	// }
+
+
 	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, utc->entry_func);
 
 	utc->is_32bit = false;
