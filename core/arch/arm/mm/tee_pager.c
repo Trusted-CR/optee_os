@@ -1596,7 +1596,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 				if(copy_checkpoint_data) {
 					TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
 						if(ai->va >= entry->entry.vaddr_start &&
-						   ai->va <= entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
+						   ai->va  < entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
 							DMSG("Additional checkpoint pagemap entry found! %p-%p", entry->entry.vaddr_start, entry->entry.vaddr_start+ entry->entry.nr_pages*SMALL_PAGE_SIZE);
 							
 							copy_checkpoint_data = true;
