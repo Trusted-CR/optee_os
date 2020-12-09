@@ -26,7 +26,7 @@ $($(_cached))
 endef
 cc-option = $(strip $(call _cc-option,$(1),$(2)))
 
-comp-cflags$(sm) = -std=gnu99
+comp-cflags$(sm) = -std=gnu99 -fstack-usage
 comp-aflags$(sm) =
 comp-cppflags$(sm) =
 
