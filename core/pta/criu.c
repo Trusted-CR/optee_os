@@ -209,6 +209,7 @@ static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigne
 
 static void free_utc(struct user_ta_ctx ** u) {
 	struct user_ta_ctx * utc = *u;
+	core_mmu_clear_map(&utc->uctx.map);
 	struct core_mmu_map_l1_entry * e = NULL;
 	if(!TAILQ_EMPTY(&utc->uctx.map.l1_entries)) {
 		TAILQ_FOREACH_REVERSE(e, &utc->uctx.map.l1_entries, core_mmu_map_l1_entries, link) {
@@ -447,6 +448,10 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 	}
 
 	tee_ta_pop_current_session();
+
+	free_checkpoint(&checkpoint);
+
+	free_utc(&utc);
 
 	return TEE_SUCCESS;
 }

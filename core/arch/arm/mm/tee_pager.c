@@ -824,7 +824,7 @@ TEE_Result tee_pager_add_um_area(struct user_mode_ctx *uctx, vaddr_t base,
 				e->idx = area->base >> 30;
 
 				void * l2_table = get_l2_table(uctx->checkpoint->l2_tables_index++); 
-				memset(l2_table, 0, PGT_SIZE);
+				memset(l2_table, 0, SMALL_PAGE_SIZE);
 
 				e->table = virt_to_phys(l2_table) | 0x3; // TABLE_DESC;
 
