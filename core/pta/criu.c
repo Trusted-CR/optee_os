@@ -431,7 +431,7 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 	struct criu_pagemap_entry_tracker * entry = NULL;
 	TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
 		if(entry->dirty) {
-			DMSG("GOT A DIRTY ENTRY HERE: %p - %p - %d", entry->entry.vaddr_start, entry->entry.vaddr_start + (entry->entry.nr_pages * SMALL_PAGE_SIZE), entry->entry.nr_pages);
+			// DMSG("GOT A DIRTY ENTRY HERE: %p - %p - %d", entry->entry.vaddr_start, entry->entry.vaddr_start + (entry->entry.nr_pages * SMALL_PAGE_SIZE), entry->entry.nr_pages);
 
 			dirty_pages_info->dirty_page_count++;
 			memcpy(binaryData->memref.buffer + index, &entry->entry, sizeof(struct criu_pagemap_entry));

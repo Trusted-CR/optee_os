@@ -1388,7 +1388,7 @@ static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
 				}
 
 				if(!already_exists) {
-					DMSG("Page fault - Marking page as dirty: %p", dirty_address);
+					// DMSG("Page fault - Marking page as dirty: %p", dirty_address);
 
 					struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
 					if(entry != NULL) {
@@ -1578,7 +1578,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
 					if(ai->va >= uctx->checkpoint->vm_areas[i].vm_start &&
 					   ai->va <= uctx->checkpoint->vm_areas[i].vm_end) {
-						DMSG("Pagefault %p happens within checkpoint VM entry! %p-%p", ai->va, uctx->checkpoint->vm_areas[i].vm_start, uctx->checkpoint->vm_areas[i].vm_end);
+						// DMSG("Pagefault %p happens within checkpoint VM entry! %p-%p", ai->va, uctx->checkpoint->vm_areas[i].vm_start, uctx->checkpoint->vm_areas[i].vm_end);
 						
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
 
@@ -1597,7 +1597,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 					TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
 						if(ai->va >= entry->entry.vaddr_start &&
 						   ai->va  < entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
-							DMSG("Additional checkpoint pagemap entry found! %p-%p", entry->entry.vaddr_start, entry->entry.vaddr_start+ entry->entry.nr_pages*SMALL_PAGE_SIZE);
+							// DMSG("Additional checkpoint pagemap entry found! %p-%p", entry->entry.vaddr_start, entry->entry.vaddr_start+ entry->entry.nr_pages*SMALL_PAGE_SIZE);
 							
 							copy_checkpoint_data = true;
 							copy_from_pagemap = true;
