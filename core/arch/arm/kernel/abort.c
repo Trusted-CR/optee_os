@@ -21,6 +21,8 @@
 
 #include "thread_private.h"
 
+static bool in_page_fault = false;
+
 enum fault_type {
 	FAULT_TYPE_USER_TA_PANIC,
 	FAULT_TYPE_USER_TA_VFP,
@@ -599,13 +601,18 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			panic("abort outside thread context");
 		}
 
-		// Ugly, but for now it works.. Only disable and re-enable the VFP registers on the first pagefault.
-		static int pagefault_level = 0;
-		if(pagefault_level++ == 0)
+		if(!in_page_fault) {
+			in_page_fault = true;
+
 			thread_kernel_save_vfp();
-		handled = tee_pager_handle_fault(&ai);
-		if(--pagefault_level == 0)
+			handled = tee_pager_handle_fault(&ai);
 			thread_kernel_restore_vfp();
+
+			in_page_fault = false;
+		} else {
+			handled = tee_pager_handle_fault(&ai);
+		}
+
 		if (!handled) {
 			if (!abort_is_user_exception(&ai)) {
 				abort_print_error(&ai);
