@@ -17,7 +17,7 @@
 #include <tee/tee_svc.h>
 #include <trace.h>
 
-#include "../kernel/vfp_private.h"
+#include "vfp_private.h"
 
 #include "thread_private.h"
 
