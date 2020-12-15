@@ -23,7 +23,7 @@ ifeq ($(PLATFORM_FLAVOR),hikey)
 CFG_PL061 ?= y
 CFG_PL022 ?= y
 CFG_SPI ?= y
-
+CFG_CORE_HEAP_SIZE=65536
 ifeq ($(CFG_SPI_TEST),y)
 $(call force,CFG_SPI,y)
 endif
