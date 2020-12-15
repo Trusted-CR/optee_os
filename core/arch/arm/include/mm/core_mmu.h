@@ -457,7 +457,7 @@ bool core_mmu_find_table(struct mmu_partition *prtn, vaddr_t va,
 			 unsigned max_level,
 			 struct core_mmu_table_info *tbl_info);
 
-bool core_mmu_set_l1(int idx, void * table);
+bool core_mmu_set_l1(int idx, void * table, uint32_t asid);
 
 /*
  * core_mmu_entry_to_finer_grained() - divide mapping at current level into

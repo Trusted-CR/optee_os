@@ -674,7 +674,8 @@ void core_mmu_create_user_map(struct user_mode_ctx *uctx,
 	map->asid = uctx->vm_info.asid;
 }
 
-bool core_mmu_set_l1(int idx, void * table) {
+
+bool core_mmu_set_l1(int idx, void * table, uint32_t asid) {
 	bool ret = false;
 	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
 
@@ -691,8 +692,12 @@ bool core_mmu_set_l1(int idx, void * table) {
 	}
 	
 	dsb();	/* Make sure the write above is visible */
-	ttbr |= ((uint64_t)1 << TTBR_ASID_SHIFT);
+	ttbr |= ((uint64_t) asid << TTBR_ASID_SHIFT);
 	write_ttbr0_el1(ttbr);
+	isb();
+
+	tlbi_all();
+	icache_inv_all();
 
 	thread_unmask_exceptions(exceptions);
 	return ret;

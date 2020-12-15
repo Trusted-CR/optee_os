@@ -809,7 +809,7 @@ TEE_Result tee_pager_add_um_area(struct user_mode_ctx *uctx, vaddr_t base,
 
 	if(uctx->map.l1_entries.tqh_last == NULL)
 		TAILQ_INIT(&uctx->map.l1_entries);
-	uctx->map.asid = 1;
+	uctx->map.asid = uctx->vm_info.asid;
 
 	TAILQ_FOREACH(area, uctx->areas, link) {
 		paddr_t pa;
@@ -830,7 +830,7 @@ TEE_Result tee_pager_add_um_area(struct user_mode_ctx *uctx, vaddr_t base,
 
 				TAILQ_INSERT_TAIL(&uctx->map.l1_entries, e, link);
 
-				core_mmu_set_l1(e->idx, (void *) e->table);
+				core_mmu_set_l1(e->idx, (void *) e->table, uctx->map.asid);
 
 				// Update it again with the new allocated entry.
 				core_mmu_find_table(NULL, area->base, 2, &dir_info);
