@@ -256,11 +256,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			bool stop_execution = false;
 			static int max_number_of_prints = 10;
 			
-			if(scn == CRIU_SYSCALL_CLOCK_GETTIME) {
-				DMSG("syscall clock_gettime() detected");
-				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_CLOCK_GETTIME;
-			} else if(scn == CRIU_SYSCALL_EXIT) {
+			if(scn == CRIU_SYSCALL_EXIT) {
 				DMSG("syscall sys_exit handled");
 				scn = 0;
 				stop_execution = true;
