@@ -390,6 +390,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	DMSG("\n\nCRIU - RUN! Entry address: %p", (void *) checkpoint->regs.entry_addr);
 	
 	jump_to_user_mode(checkpoint->regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
+	thread_user_clear_vfp(&utc->uctx.vfp);
 
 	// Copy the return value in the buffer.
 	long index = 0;
