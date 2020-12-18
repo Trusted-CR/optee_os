@@ -246,7 +246,9 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		return true; /* return to user mode */
 	}
 
-	// DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
+	DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
+#endif
 	struct thread_specific_data *tsd = thread_get_tsd();
 	if(is_user_ta_ctx(tsd->ctx)) {
 		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
@@ -295,8 +297,9 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			}
 
 			if(stop_execution) {
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 				DMSG("Time to stop execution");
-
+#endif
 				// Reset
 				max_number_of_prints = 30;
 

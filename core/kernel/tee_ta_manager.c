@@ -495,8 +495,10 @@ TEE_Result tee_ta_close_session(struct tee_ta_session *csess,
 	struct tee_ta_ctx *ctx;
 	bool keep_alive;
 
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("csess 0x%" PRIxVA " id %u",
 	     (vaddr_t)csess, csess ? csess->id : UINT_MAX);
+#endif
 
 	if (!csess)
 		return TEE_ERROR_ITEM_NOT_FOUND;
@@ -515,7 +517,9 @@ TEE_Result tee_ta_close_session(struct tee_ta_session *csess,
 	}
 
 	ctx = sess->ctx;
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("Destroy session");
+#endif
 
 	if (!ctx) {
 		destroy_session(sess, open_sessions);
@@ -570,8 +574,9 @@ static TEE_Result tee_ta_init_session_with_context(struct tee_ta_ctx *ctx,
 	if (!(ctx->flags & TA_FLAG_MULTI_SESSION) && ctx->ref_count)
 		return TEE_ERROR_BUSY;
 
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("Re-open TA %pUl", (void *)&ctx->uuid);
-
+#endif
 	ctx->ref_count++;
 	s->ctx = ctx;
 	return TEE_SUCCESS;

@@ -1510,8 +1510,10 @@ static void stat_handle_fault(void)
 
 	num_faults++;
 	if ((num_faults % 1024) == 0 || tee_pager_npages < total_min_npages) {
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 		DMSG("nfaults %zu npages %zu (min %zu)",
 		     num_faults, tee_pager_npages, min_npages);
+#endif
 		min_npages = tee_pager_npages; /* reset */
 	}
 	if (tee_pager_npages < min_npages)

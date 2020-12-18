@@ -281,7 +281,9 @@ TEE_Result tee_ta_init_pseudo_ta_session(const TEE_UUID *uuid,
 	struct tee_ta_ctx *ctx;
 	const struct pseudo_ta_head *ta;
 
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("Lookup pseudo TA %pUl", (void *)uuid);
+#endif
 
 	ta = SCATTERED_ARRAY_BEGIN(pseudo_tas, struct pseudo_ta_head);
 	while (true) {
@@ -294,7 +296,9 @@ TEE_Result tee_ta_init_pseudo_ta_session(const TEE_UUID *uuid,
 	}
 
 	/* Load a new TA and create a session */
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("Open %s", ta->name);
+#endif
 	stc = calloc(1, sizeof(struct pseudo_ta_ctx));
 	if (!stc)
 		return TEE_ERROR_OUT_OF_MEMORY;
@@ -308,7 +312,8 @@ TEE_Result tee_ta_init_pseudo_ta_session(const TEE_UUID *uuid,
 	ctx->ops = &pseudo_ta_ops;
 	TAILQ_INSERT_TAIL(&tee_ctxes, ctx, link);
 
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("%s : %pUl", stc->pseudo_ta->name, (void *)&ctx->uuid);
-
+#endif
 	return TEE_SUCCESS;
 }

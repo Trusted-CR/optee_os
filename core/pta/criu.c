@@ -229,8 +229,9 @@ static void free_utc(struct user_ta_ctx ** u) {
 static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct criu_vm_area * area) {
 	if(area == NULL)
 		return TEE_ERROR_BAD_PARAMETERS;
-
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("\n\nCRIU - ALLOC: %p - %p", (void *) area->vm_start, area->vm_end);
+#endif
 	return criu_alloc_and_map_ldelf_fobj(utc, area->vm_end - area->vm_start,
 				       area->protection,
 				       &area->vm_start);
@@ -350,9 +351,13 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	utc->ldelf_stack_ptr = checkpoint->regs.stack_addr;
 	utc->entry_func = checkpoint->regs.entry_addr;
 
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("\n\nCRIU - ALLOCATION COMPLETED!");
+#endif
 
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("CRIU - SET CTX!");
+#endif
 	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
 	struct criu_vm_area * area = checkpoint->vm_areas;
@@ -379,16 +384,18 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	// 	DMSG("----------------------------------------------------------");
 	// }
 
-
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, utc->entry_func);
-
+#endif
 	utc->is_32bit = false;
 	utc->uctx.ctx.ref_count = 1;
 	condvar_init(&utc->uctx.ctx.busy_cv);
 	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->uctx.ctx, link);
 
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("\n\nCRIU - RUN! Entry address: %p", (void *) checkpoint->regs.entry_addr);
-	
+#endif
+
 	jump_to_user_mode(checkpoint->regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
 	thread_user_clear_vfp(&utc->uctx.vfp);
 
@@ -406,8 +413,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 static TEE_Result criu_checkpoint_back(uint32_t param_types,
 			     TEE_Param params[TEE_NUM_PARAMS]) {
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("CRIU - COPYING DATA BACK");
-
+#endif
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
 						TEE_PARAM_TYPE_MEMREF_INOUT,
 						TEE_PARAM_TYPE_NONE,
@@ -459,7 +467,9 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 
 static TEE_Result criu_load_checkpoint(uint32_t param_types,
 			     TEE_Param params[TEE_NUM_PARAMS]) {
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("Load checkpoint");
+#endif
 
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
 						TEE_PARAM_TYPE_MEMREF_INOUT,
@@ -469,6 +479,7 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	IMSG("Got data from NW, size: %d and %d", params[0].memref.size, params[1].memref.size);
 
 	uint8_t files = params[1].memref.size / sizeof(struct checkpoint_file);
@@ -477,7 +488,8 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 		DMSG("Which matches to the expected number: %d/%d", files, CHECKPOINT_FILES);
 	else
 		DMSG("Unexpected number of checkpoint files: %d/%d", files, CHECKPOINT_FILES);
-	
+#endif
+
 	// LOAD CHECKPOINT DATA
 	load_checkpoint_data(&params[0], &params[1]);
 
@@ -486,7 +498,9 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 
 static TEE_Result criu_continue_execution(uint32_t param_types,
 			     TEE_Param params[TEE_NUM_PARAMS]) {
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU				 
 	DMSG("Continue execution");
+#endif
 
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INOUT,
 						TEE_PARAM_TYPE_MEMREF_INOUT,
@@ -495,11 +509,11 @@ static TEE_Result criu_continue_execution(uint32_t param_types,
 
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
-		
-	DMSG("before push");
-	tee_ta_push_current_session(s);
 
+	tee_ta_push_current_session(s);
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("CRIU - SET CTX!");
+#endif
 	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
 
 	enum criu_return_types * return_type = params[0].memref.buffer;
@@ -594,7 +608,9 @@ static TEE_Result open_session(uint32_t param_types __unused,
 			       TEE_Param params[TEE_NUM_PARAMS] __unused,
 			       void **sess_ctx) {
 	(void) sess_ctx; // Susspress unused variable warning
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("Open session to %s", TA_NAME);
+#endif
 	return TEE_SUCCESS;
 }
 
@@ -613,8 +629,9 @@ static void close_session(void *sess_ctx) {
 		free(s);
 		s = NULL;
 	}
-
+#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("Closed session to %s", TA_NAME);
+#endif
 }
 
 pseudo_ta_register(.uuid = CRIU_UUID, .name = TA_NAME,
