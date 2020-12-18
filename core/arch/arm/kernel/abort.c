@@ -525,15 +525,15 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 	}
 }
 
-void checkpoint_back(struct thread_abort_regs *regs) {
+void checkpoint_back(struct thread_abort_regs *regs, uint32_t pc) {
 	struct thread_specific_data *tsd = thread_get_tsd();
 	if(is_user_ta_ctx(tsd->ctx)) {
 		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
 
-		if(ctx->uctx.checkpoint != NULL) {
+		if(ctx->uctx.is_criu_checkpoint) {
 			struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
 			// Checkpoint the program counter
-			checkpoint->regs.entry_addr = regs->elr - 4; // Assuming svc 0x0 is 4 bytes
+			checkpoint->regs.entry_addr = pc;
 			// Checkpoint the stack pointer
 			checkpoint->regs.stack_addr = regs->sp_el0;
 			// Checkpoint back pstate
@@ -583,7 +583,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 	case FAULT_TYPE_USER_TA_PANIC:
 		DMSG("ABORT AT PC %p - VA %p", ai.pc, ai.va);
 		DMSG("[abort] abort in User mode (TA will panic): pa %p - va %p", ai.pc, ai.va);
-		checkpoint_back(regs);
+		checkpoint_back(regs, ai.pc);
 		save_abort_info_in_tsd(&ai);
 		vfp_disable();
 		handle_user_ta_panic(&ai);
