@@ -1371,7 +1371,7 @@ static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
 
 			struct criu_vm_area * vm_areas;
 			for(int i = 0; i < checkpoint->vm_area_count; i++) {
-				if((checkpoint->vm_areas[i].vm_start <= ai->va) && (ai->va <= checkpoint->vm_areas[i].vm_end)) {
+				if((checkpoint->vm_areas[i].vm_start <= ai->va) && (ai->va < checkpoint->vm_areas[i].vm_end)) {
 					dirty_checkpoint_entry = true;
 					break;
 				}
