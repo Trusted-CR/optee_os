@@ -997,11 +997,19 @@ void core_mmu_clear_map(struct core_mmu_map *map) {
 	if (map && !TAILQ_EMPTY(&map->l1_entries)) {
 		TAILQ_FOREACH_REVERSE(l1_entry, &map->l1_entries, core_mmu_map_l1_entries, link) {
 			prtn->l1_tables[0][get_core_pos()][l1_entry->idx] = 0;
+			dsb();
 #ifdef DEBUG_CRIU_TABLES
 			DMSG("prtn->l1_tables[0][%d][%d] = 0", get_core_pos(), l1_entry->idx);
 #endif
 			TAILQ_REMOVE(&map->l1_entries, l1_entry, link);
 			free(l1_entry);
+		}
+	} else if (map == NULL) {
+		DMSG("going to clear all maps");
+
+		for(int i = 1; i < NUM_L1_ENTRIES; i++) {
+			prtn->l1_tables[0][get_core_pos()][i] = 0;
+			dsb();
 		}
 	}
 
