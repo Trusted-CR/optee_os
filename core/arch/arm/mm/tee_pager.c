@@ -661,7 +661,7 @@ static bool criu_load_page(vaddr_t page_va, void * va_alias ) {
 			// First check if the va address is valid within the vm areas range
 			for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
 				if(page_va >= uctx->checkpoint->vm_areas[i].vm_start &&
-				   page_va <= uctx->checkpoint->vm_areas[i].vm_end) {
+				   page_va  < uctx->checkpoint->vm_areas[i].vm_end) {
 
 					bool is_page_data = false;
 					struct criu_pagemap_entry_tracker * entry = NULL;
@@ -1653,7 +1653,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 				// First check if the va address is valid within the vm areas range
 				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
 					if(ai->va >= uctx->checkpoint->vm_areas[i].vm_start &&
-					   ai->va <= uctx->checkpoint->vm_areas[i].vm_end) {
+					   ai->va  < uctx->checkpoint->vm_areas[i].vm_end) {
 						// DMSG("Pagefault %p happens within checkpoint VM entry! %p-%p", ai->va, uctx->checkpoint->vm_areas[i].vm_start, uctx->checkpoint->vm_areas[i].vm_end);
 						
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
