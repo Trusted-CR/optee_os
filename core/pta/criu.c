@@ -428,6 +428,8 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 
 	tee_ta_push_current_session(s);
 
+	criu_tee_mmu_set_ctx(&utc->uctx.ctx);
+
 	long index = 0;
 	memcpy(binaryData->memref.buffer, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
 	index += sizeof(struct criu_checkpoint_regs);
