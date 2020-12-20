@@ -126,7 +126,7 @@ static void rwp_free(struct fobj *fobj)
 }
 
 static TEE_Result rwp_load_page(struct fobj *fobj, unsigned int page_idx,
-				void *va)
+				void *va, bool * dirty_page)
 {
 	struct fobj_rwp *rwp = to_rwp(fobj);
 	struct rwp_state *state = rwp->state + page_idx;
@@ -143,10 +143,12 @@ static TEE_Result rwp_load_page(struct fobj *fobj, unsigned int page_idx,
 		 * iv still zero which means that this is previously unused
 		 * page.
 		 */
+		*dirty_page = false;
 		memset(va, 0, SMALL_PAGE_SIZE);
 		return TEE_SUCCESS;
 	}
 
+	*dirty_page = true;
 	return internal_aes_gcm_dec(&rwp_ae_key, &iv, sizeof(iv),
 				    NULL, 0, src, SMALL_PAGE_SIZE, va,
 				    state->tag, sizeof(state->tag));
@@ -268,8 +270,9 @@ static TEE_Result rop_load_page_helper(struct fobj_rop *rop,
 }
 
 static TEE_Result rop_load_page(struct fobj *fobj, unsigned int page_idx,
-				void *va)
+				void *va, bool * dirty_page)
 {
+	*dirty_page = true;
 	return rop_load_page_helper(to_rop(fobj), page_idx, va);
 }
 DECLARE_KEEP_PAGER(rop_load_page);
@@ -425,13 +428,14 @@ static void rrp_free(struct fobj *fobj)
 }
 
 static TEE_Result rrp_load_page(struct fobj *fobj, unsigned int page_idx,
-				void *va)
+				void *va, bool * dirty_page)
 {
 	struct fobj_ro_reloc_paged *rrp = to_rrp(fobj);
 	unsigned int end_rel = rrp->num_relocs;
 	TEE_Result res = TEE_SUCCESS;
 	unsigned long *where = NULL;
 	unsigned int n = 0;
+	*dirty_page = true;
 
 	res = rop_load_page_helper(&rrp->rop, page_idx, va);
 	if (res)
@@ -487,12 +491,13 @@ static void lop_free(struct fobj *fobj)
 
 static TEE_Result lop_load_page(struct fobj *fobj __maybe_unused,
 				unsigned int page_idx __maybe_unused,
-				void *va)
+				void *va, bool * dirty_page)
 {
 	assert(fobj->ops == &ops_locked_paged);
 	assert(refcount_val(&fobj->refc));
 	assert(page_idx < fobj->num_pages);
 
+	*dirty_page = false;
 	memset(va, 0, SMALL_PAGE_SIZE);
 
 	return TEE_SUCCESS;

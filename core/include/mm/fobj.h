@@ -39,7 +39,7 @@ struct fobj_ops {
 	void (*free)(struct fobj *fobj);
 #ifdef CFG_WITH_PAGER
 	TEE_Result (*load_page)(struct fobj *fobj, unsigned int page_idx,
-				void *va);
+				void *va, bool * dirty_address);
 	TEE_Result (*save_page)(struct fobj *fobj, unsigned int page_idx,
 				const void *va);
 #endif
@@ -114,10 +114,10 @@ struct fobj *fobj_ro_reloc_paged_alloc(unsigned int num_pages, void *hashes,
  * Returns TEE_SUCCESS on success or TEE_ERROR_* on failure.
  */
 static inline TEE_Result fobj_load_page(struct fobj *fobj,
-					unsigned int page_idx, void *va)
+					unsigned int page_idx, void *va, bool * dirty_page)
 {
 	if (fobj)
-		return fobj->ops->load_page(fobj, page_idx, va);
+		return fobj->ops->load_page(fobj, page_idx, va, dirty_page);
 
 	return TEE_ERROR_GENERIC;
 }

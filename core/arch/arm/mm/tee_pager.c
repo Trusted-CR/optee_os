@@ -635,6 +635,69 @@ static paddr_t get_pmem_pa(struct tee_pager_pmem *pmem)
 	return pa;
 }
 
+static bool criu_is_checkpoint_address(vaddr_t page_va) {
+	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
+	if(is_user_mode_ctx(ctx)) {
+		struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
+		if(uctx->is_criu_checkpoint) {
+			// Check if the va address is valid within the vm areas range
+			for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
+				if(page_va >= uctx->checkpoint->vm_areas[i].vm_start &&
+				   page_va <= uctx->checkpoint->vm_areas[i].vm_end) {
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
+static bool criu_load_page(vaddr_t page_va, void * va_alias ) {
+	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
+	if(is_user_mode_ctx(ctx)) {
+		struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
+		if(uctx->is_criu_checkpoint) {
+			// First check if the va address is valid within the vm areas range
+			for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
+				if(page_va >= uctx->checkpoint->vm_areas[i].vm_start &&
+				   page_va <= uctx->checkpoint->vm_areas[i].vm_end) {
+
+					bool is_page_data = false;
+					struct criu_pagemap_entry_tracker * entry = NULL;
+					TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
+						if(page_va >= entry->entry.vaddr_start &&
+						   page_va  < entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
+							
+							// DMSG("\n\nMEMCPIED: %p", page_va);
+							memcpy(va_alias, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
+							
+							is_page_data = true;
+							return true;
+						}
+					}
+
+					if(!is_page_data) {
+						if((uctx->checkpoint->vm_areas[i].status & VMA_FILE_PRIVATE)) {
+							// DMSG("\n\nMEMCPIED: %p", page_va);
+							memcpy(va_alias, uctx->checkpoint->vm_areas[i].original_data + uctx->checkpoint->vm_areas[i].offset + (page_va - uctx->checkpoint->vm_areas[i].vm_start), SMALL_PAGE_SIZE);
+							// pmem->flags |= PMEM_FLAG_DIRTY;
+						} else {
+							// DMSG("\n\nInited to zero: %p", page_va);
+							// Initialize the page to zero.
+							memset(va_alias, 0, SMALL_PAGE_SIZE);
+						}
+					}
+
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
 static void tee_pager_load_page(struct tee_pager_area *area, vaddr_t page_va,
 			void *va_alias)
 {
@@ -644,6 +707,7 @@ static void tee_pager_load_page(struct tee_pager_area *area, vaddr_t page_va,
 	uint32_t attr_alias;
 	paddr_t pa_alias;
 	unsigned int idx_alias;
+	bool dirty_page;
 
 	/* Insure we are allowed to write to aliased virtual page */
 	ti = find_table_info((vaddr_t)va_alias);
@@ -656,10 +720,18 @@ static void tee_pager_load_page(struct tee_pager_area *area, vaddr_t page_va,
 	}
 
 	asan_tag_access(va_alias, (uint8_t *)va_alias + SMALL_PAGE_SIZE);
-	if (fobj_load_page(area->fobj, fobj_pgoffs, va_alias)) {
+	if (fobj_load_page(area->fobj, fobj_pgoffs, va_alias, &dirty_page)) {
 		EMSG("PH 0x%" PRIxVA " failed", page_va);
 		panic();
 	}
+
+	if(!dirty_page) {
+		if(criu_is_checkpoint_address(page_va)) {
+			// DMSG("the page is not dirty and it is a criu address!!");
+			criu_load_page(page_va, va_alias);
+		}
+	}
+
 	switch (area->type) {
 	case PAGER_AREA_TYPE_RO:
 		incr_ro_hits();
@@ -1358,6 +1430,21 @@ static struct tee_pager_pmem *tee_pager_get_page(enum tee_pager_area_type at)
 	return pmem;
 }
 
+static void add_dirty_entry(vaddr_t dirty_address, struct user_mode_ctx * uctx) {
+	// DMSG("Adding dirty entry: %p", dirty_address);
+	struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
+	if(entry != NULL) {
+		entry->entry.vaddr_start = dirty_address;
+		entry->entry.nr_pages = 1;
+		entry->dirty = true;
+
+		TAILQ_INSERT_TAIL(&uctx->checkpoint->pagemap_entries, entry, link);
+	} else {
+		DMSG("OUT OF MEMORY!!");
+		panic();
+	}
+}
+
 static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
 	// Mark checkpoint page as dirty
 	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
@@ -1387,21 +1474,8 @@ static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
 					}
 				}
 
-				if(!already_exists) {
-					// DMSG("Page fault - Marking page as dirty: %p", dirty_address);
-
-					struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
-					if(entry != NULL) {
-						entry->entry.vaddr_start = dirty_address;
-						entry->entry.nr_pages = 1;
-						entry->dirty = true;
-
-						TAILQ_INSERT_TAIL(&uctx->checkpoint->pagemap_entries, entry, link);
-					} else {
-						DMSG("OUT OF MEMORY!!");
-						panic();
-					}
-				}
+				if(!already_exists)
+					add_dirty_entry(dirty_address, uctx);
 
 				return true;
 			}
@@ -1669,36 +1743,39 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		pa = get_pmem_pa(pmem);
 
 		//Perhaps the copy needs to happen over here.
-		if(copy_checkpoint_data) {
-			area_set_entry(area, tblidx, pa, attr | TEE_MATTR_PW);
-			/*
-				* No need to flush TLB for this entry, it was
-				* invalid. We should use a barrier though, to make
-				* sure that the change is visible.
-				*/
-			dsb_ishst();
+		// if(copy_checkpoint_data) {
+		// 	area_set_entry(area, tblidx, pa, attr | TEE_MATTR_PW);
+		// 	/*
+		// 		* No need to flush TLB for this entry, it was
+		// 		* invalid. We should use a barrier though, to make
+		// 		* sure that the change is visible.
+		// 		*/
+		// 	dsb_ishst();
 
-			if(copy_checkpoint_data) {
-				pager_unlock(exceptions);
-				// DMSG("Time to memcpy the data");
-				// Copy the page data.
-				if (entry != NULL) {
-					memcpy((void *)page_va, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
-					pmem->flags |= PMEM_FLAG_DIRTY;
-				} else if(vm_area_index != -1 && uctx != NULL) {
-					// TODO: Data is not always coming from the binary file.. the data can be from other memory mapped files..
-					if((uctx->checkpoint->vm_areas[vm_area_index].status & VMA_FILE_PRIVATE)) {
-						memcpy((void *)page_va, uctx->checkpoint->vm_areas[vm_area_index].original_data + uctx->checkpoint->vm_areas[vm_area_index].offset + (page_va - uctx->checkpoint->vm_areas[vm_area_index].vm_start), SMALL_PAGE_SIZE);
-						pmem->flags |= PMEM_FLAG_DIRTY;
-					} else {
-						// Initialize the page to zero.
-						memset((void *)page_va, 0, SMALL_PAGE_SIZE);
-					}
-				}
+		// 	if(copy_checkpoint_data) {
+		// 		pager_unlock(exceptions);
+		// 		// DMSG("Time to memcpy the data");
+		// 		// Copy the page data.
+		// 		if (entry != NULL) {
+		// 			DMSG("\n\nMEMCPIED: %p", page_va);
+		// 			memcpy((void *)page_va, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
+		// 			// pmem->flags |= PMEM_FLAG_DIRTY;
+		// 		} else if(vm_area_index != -1 && uctx != NULL) {
+		// 			// TODO: Data is not always coming from the binary file.. the data can be from other memory mapped files..
+		// 			if((uctx->checkpoint->vm_areas[vm_area_index].status & VMA_FILE_PRIVATE)) {
+		// 				DMSG("\n\nMEMCPIED: %p", page_va);
+		// 				memcpy((void *)page_va, uctx->checkpoint->vm_areas[vm_area_index].original_data + uctx->checkpoint->vm_areas[vm_area_index].offset + (page_va - uctx->checkpoint->vm_areas[vm_area_index].vm_start), SMALL_PAGE_SIZE);
+		// 				// pmem->flags |= PMEM_FLAG_DIRTY;
+		// 			} else {
+		// 				DMSG("\n\nInited to zero: %p", page_va);
+		// 				// Initialize the page to zero.
+		// 				memset((void *)page_va, 0, SMALL_PAGE_SIZE);
+		// 			}
+		// 		}
 				
-				exceptions = pager_lock(ai);
-			}
-		}
+		// 		exceptions = pager_lock(ai);
+		// 	}
+		// }
 
 		/*
 		 * Pages from PAGER_AREA_TYPE_RW starts read-only to be
