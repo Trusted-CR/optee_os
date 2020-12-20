@@ -532,6 +532,40 @@ void checkpoint_back(struct thread_abort_regs *regs, uint32_t pc) {
 
 		if(ctx->uctx.is_criu_checkpoint) {
 			struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
+
+			// Checkpoint all registers
+			// TODO: rewrite to pointer
+			checkpoint->regs.regs[0]  = regs->x0;
+			checkpoint->regs.regs[1]  = regs->x1;
+			checkpoint->regs.regs[2]  = regs->x2;
+			checkpoint->regs.regs[3]  = regs->x3;
+			checkpoint->regs.regs[4]  = regs->x4;
+			checkpoint->regs.regs[5]  = regs->x5;
+			checkpoint->regs.regs[6]  = regs->x6;
+			checkpoint->regs.regs[7]  = regs->x7;
+			checkpoint->regs.regs[8]  = regs->x8;
+			checkpoint->regs.regs[9]  = regs->x9;
+			checkpoint->regs.regs[11] = regs->x11;
+			checkpoint->regs.regs[12] = regs->x12;
+			checkpoint->regs.regs[13] = regs->x13;
+			checkpoint->regs.regs[14] = regs->x14;
+			checkpoint->regs.regs[15] = regs->x15;
+			checkpoint->regs.regs[16] = regs->x16;
+			checkpoint->regs.regs[17] = regs->x17;
+			checkpoint->regs.regs[18] = regs->x18;
+			checkpoint->regs.regs[19] = regs->x19;
+			checkpoint->regs.regs[20] = regs->x20;
+			checkpoint->regs.regs[21] = regs->x21;
+			checkpoint->regs.regs[22] = regs->x22;
+			checkpoint->regs.regs[23] = regs->x23;
+			checkpoint->regs.regs[24] = regs->x24;
+			checkpoint->regs.regs[25] = regs->x25;
+			checkpoint->regs.regs[26] = regs->x26;
+			checkpoint->regs.regs[27] = regs->x27;
+			checkpoint->regs.regs[28] = regs->x28;
+			checkpoint->regs.regs[29] = regs->x29;
+			checkpoint->regs.regs[30] = regs->x30;
+
 			// Checkpoint the program counter
 			checkpoint->regs.entry_addr = pc;
 			// Checkpoint the stack pointer
