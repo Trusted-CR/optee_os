@@ -41,6 +41,7 @@ struct criu_checkpoint_regs {
 	uint32_t pstate;
 	uint32_t fpsr;
 	uint32_t fpcr;
+	bool fp_used;
 };
 
 struct criu_checkpoint_dirty_pages {

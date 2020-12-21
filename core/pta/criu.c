@@ -302,6 +302,7 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	
 	checkpoint = calloc(1, sizeof(struct criu_checkpoint));	
 	checkpoint->l2_tables_index = 0;
+	checkpoint->regs.fp_used = false;
 
 	TAILQ_INIT(&checkpoint->pagemap_entries);
 

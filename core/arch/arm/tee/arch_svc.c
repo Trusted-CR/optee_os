@@ -318,27 +318,31 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				// Checkpoint back tpidr_el0
 				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
 
-				// Temporarily enable vfp to retrieve registers
-				bool vfp_enabled = true;
-				if(!vfp_is_enabled()) {
-					// To restore the original vfp state after reading the registers.
-					vfp_enabled = false;
-					
-					// Temporarily enable to retrieve registers.
-					vfp_enable();
+				// Only backup the floating point registers if the program actually used it
+				// Otherwise wrong values will be backed up. 
+				if(checkpoint->regs.fp_used) {
+					// Temporarily enable vfp to retrieve registers
+					bool vfp_enabled = true;
+					if(!vfp_is_enabled()) {
+						// To restore the original vfp state after reading the registers.
+						vfp_enabled = false;
+						
+						// Temporarily enable to retrieve registers.
+						vfp_enable();
+					}
+
+					// Store vfp registers
+					vfp_save_extension_regs(checkpoint->regs.vregs);
+
+					// Checkpoint back the FPCR register
+					checkpoint->regs.fpcr = read_fpcr();
+					// Checkpoint back the FPSR register
+					checkpoint->regs.fpsr = read_fpsr();				
+
+					// vfp was disabled beforehand, so disable it again.
+					if(!vfp_enabled)
+						vfp_disable();
 				}
-
-				// Store vfp registers
-				vfp_save_extension_regs(checkpoint->regs.vregs);
-
-				// Checkpoint back the FPCR register
-				checkpoint->regs.fpcr = read_fpcr();
-				// Checkpoint back the FPSR register
-				checkpoint->regs.fpsr = read_fpsr();
-
-				// vfp was disabled beforehand, so disable it again.
-				if(!vfp_enabled)
-					vfp_disable();
 
 				// Temporarily to test returning to the normal world, otherwise it would keep running
 				return TEE_SCN_RETURN;
