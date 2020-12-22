@@ -1659,8 +1659,17 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
 
 						// First try to map only one single page.
-						criu_alloc_and_map_ldelf_fobj(utc, 1, uctx->checkpoint->vm_areas[i].protection, &page_va);
-				
+						TEE_Result res = criu_alloc_and_map_ldelf_fobj(utc, 1, uctx->checkpoint->vm_areas[i].protection, &page_va);
+						if(res != TEE_SUCCESS) {
+							if(res == TEE_ERROR_OUT_OF_MEMORY)
+								DMSG("Unable to map checkpointed page, out of memory.");
+							else
+								DMSG("Unable to map checkpointed page %p, error: %p", ai->va, res);
+								
+							utc->uctx.checkpoint->result = CRIU_OUT_OF_MEMORY;
+							return false;
+						}
+					
 						area = find_area(uctx->areas, ai->va);
 						copy_checkpoint_data = true;
 						vm_area_index = i;

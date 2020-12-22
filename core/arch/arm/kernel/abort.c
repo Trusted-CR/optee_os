@@ -623,6 +623,21 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 		}
 
 		if (!handled) {
+			struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
+			if(is_user_mode_ctx(ctx)) {
+				struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
+				if(uctx->is_criu_checkpoint && uctx->checkpoint->result == CRIU_OUT_OF_MEMORY) {
+					checkpoint_back(regs, ai.pc);
+					save_abort_info_in_tsd(&ai);
+					vfp_disable();
+					handle_user_ta_panic(&ai);
+					handled = true;
+				}
+			}
+		}
+
+		// If still not handled
+		if (!handled) {
 			if (!abort_is_user_exception(&ai)) {
 				abort_print_error(&ai);
 				panic("unhandled pageable abort");
