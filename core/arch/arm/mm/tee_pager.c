@@ -664,13 +664,12 @@ static bool criu_load_page(vaddr_t page_va, void * va_alias ) {
 				   page_va  < uctx->checkpoint->vm_areas[i].vm_end) {
 
 					bool is_page_data = false;
-					struct criu_pagemap_entry_tracker * entry = NULL;
-					TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
-						if(page_va >= entry->entry.vaddr_start &&
-						   page_va  < entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
+					for(int y = 0; y < uctx->checkpoint->pagemap_entry_count; y++) {
+						if(page_va >= uctx->checkpoint->pagemap_entries[y].vaddr_start &&
+						   page_va  < uctx->checkpoint->pagemap_entries[y].vaddr_start + uctx->checkpoint->pagemap_entries[y].nr_pages * SMALL_PAGE_SIZE) {
 							
 							// DMSG("\n\nMEMCPIED: %p", page_va);
-							memcpy(va_alias, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
+							memcpy(va_alias, uctx->checkpoint->pagemap_entries[y].buffer + (page_va - uctx->checkpoint->pagemap_entries[y].vaddr_start), SMALL_PAGE_SIZE);
 							
 							is_page_data = true;
 							return true;
@@ -1432,13 +1431,10 @@ static struct tee_pager_pmem *tee_pager_get_page(enum tee_pager_area_type at)
 
 static void add_dirty_entry(vaddr_t dirty_address, struct user_mode_ctx * uctx) {
 	// DMSG("Adding dirty entry: %p", dirty_address);
-	struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
+	struct criu_dirty_page * entry = calloc(1, sizeof(struct criu_dirty_page));
 	if(entry != NULL) {
-		entry->entry.vaddr_start = dirty_address;
-		entry->entry.nr_pages = 1;
-		entry->dirty = true;
-
-		TAILQ_INSERT_TAIL(&uctx->checkpoint->pagemap_entries, entry, link);
+		entry->vaddr_start = dirty_address;		
+		TAILQ_INSERT_TAIL(&uctx->checkpoint->dirty_pagemap, entry, link);
 	} else {
 		DMSG("OUT OF MEMORY!!");
 		panic();
@@ -1466,9 +1462,9 @@ static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
 
 			if(dirty_checkpoint_entry) {
 				bool already_exists = false;
-				struct criu_pagemap_entry_tracker * entry = NULL;
-				TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
-					if(entry->entry.vaddr_start == dirty_address && entry->dirty) {
+				struct criu_dirty_page * entry = NULL;
+				TAILQ_FOREACH(entry, &uctx->checkpoint->dirty_pagemap, link) {
+					if(entry->vaddr_start == dirty_address) {
 						already_exists = true;
 						break;
 					}
@@ -1644,7 +1640,6 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 	bool copy_from_pagemap = false;
 	int vm_area_index = -1;
 	struct user_mode_ctx * uctx = NULL;
-	struct criu_pagemap_entry_tracker * entry = NULL;
 	if(!area) {		
 		struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 		if(is_user_mode_ctx(ctx)) {
@@ -1679,9 +1674,9 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 
 				// First check if the page is in the pagemap_entries
 				if(copy_checkpoint_data) {
-					TAILQ_FOREACH(entry, &uctx->checkpoint->pagemap_entries, link) {
-						if(ai->va >= entry->entry.vaddr_start &&
-						   ai->va  < entry->entry.vaddr_start + entry->entry.nr_pages * SMALL_PAGE_SIZE) {
+					for(int y = 0; y < uctx->checkpoint->pagemap_entry_count; y++) {
+						if(ai->va >= uctx->checkpoint->pagemap_entries[y].vaddr_start &&
+						   ai->va  < uctx->checkpoint->pagemap_entries[y].vaddr_start + uctx->checkpoint->pagemap_entries[y].nr_pages * SMALL_PAGE_SIZE) {
 							// DMSG("Additional checkpoint pagemap entry found! %p-%p", entry->entry.vaddr_start, entry->entry.vaddr_start+ entry->entry.nr_pages*SMALL_PAGE_SIZE);
 							
 							copy_checkpoint_data = true;

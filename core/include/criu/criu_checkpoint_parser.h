@@ -12,6 +12,10 @@
 #define DMSG printf
 #endif
 
+#define TEE_MATTR_UR			(1 << 7)
+#define TEE_MATTR_UW			(1 << 8)
+#define TEE_MATTR_UX			(1 << 9)
+
 static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
   if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
       strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
@@ -35,9 +39,9 @@ char *sstrstr(char *haystack, char *needle, size_t length)
     return NULL;
 }
 
-static bool parse_checkpoint_pagemap(struct criu_pagemap_entries * pagemap_entries, char * json, uint64_t file_size) {
-	if(pagemap_entries == NULL) {
-		DMSG("Error: pagemap_entries struct is NULL");
+static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
+	if(checkpoint == NULL) {
+		DMSG("Error: checkpoint struct is NULL");
 		return false;
 	}
 
@@ -68,28 +72,30 @@ static bool parse_checkpoint_pagemap(struct criu_pagemap_entries * pagemap_entri
 				// Allocate the required number of VMA area structs
 				// size - 1 as the first entry is "pages_id": 1, checkout pagemap-*.txt
 				// i += 4 to skip the first entry.
-				int pagemap_entry_count = tokens[++i].size - 1; i+=4;
+				checkpoint->pagemap_entry_count = tokens[++i].size - 1; i+=4;
+				checkpoint->pagemap_entries = calloc(1, sizeof(struct criu_pagemap_entry) * checkpoint->pagemap_entry_count);
+				if(checkpoint->pagemap_entries == NULL) {
+					DMSG("Unable to allocate checkpoint->pagemap_entries: Out of memory");
+					return false;
+				}
 
 				int file_index = 0;
 				// Parse all pagemap entries
-				for(int y = 0; y < pagemap_entry_count; y++, i += (tokens[i].size * 2) + 1) {
+				for(int y = 0; y < checkpoint->pagemap_entry_count; y++, i += (tokens[i].size * 2) + 1) {
 					if(tokens[i].size == 3) {
 						// Parse the address, number of pages and initialize the flags.
-						struct criu_pagemap_entry_tracker * entry = calloc(1, sizeof(struct criu_pagemap_entry_tracker));
-						entry->entry.vaddr_start = strtoul(json + tokens[i+2].start, NULL, 16);
-						entry->entry.nr_pages    = strtoul(json + tokens[i+4].start, NULL, 10);
-						entry->entry.flags       = 0;
-						entry->entry.file_page_index = file_index;
+						checkpoint->pagemap_entries[y].vaddr_start = strtoul(json + tokens[i+2].start, NULL, 16);
+						checkpoint->pagemap_entries[y].nr_pages    = strtoul(json + tokens[i+4].start, NULL, 10);
+						checkpoint->pagemap_entries[y].flags       = 0;
+						checkpoint->pagemap_entries[y].file_page_index = file_index;
 						
 						// Parse the flags
 						if(sstrstr(json + tokens[i+6].start, "PE_PRESENT", tokens[i+6].end - tokens[i+6].start) != NULL)
-							entry->entry.flags |= PE_PRESENT;
+							checkpoint->pagemap_entries[y].flags |= PE_PRESENT;
 						if(sstrstr(json + tokens[i+6].start, "PE_LAZY", tokens[i+6].end - tokens[i+6].start) != NULL)
-							entry->entry.flags |= PE_LAZY;
+							checkpoint->pagemap_entries[y].flags |= PE_LAZY;
 
-						TAILQ_INSERT_TAIL(pagemap_entries, entry, link);
-
-						file_index += entry->entry.nr_pages;
+						file_index += checkpoint->pagemap_entries[y].nr_pages;
 					}
 				}
 

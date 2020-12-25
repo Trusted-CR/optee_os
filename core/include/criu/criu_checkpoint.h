@@ -21,16 +21,15 @@ struct criu_pagemap_entry {
 	unsigned long file_page_index;
 	unsigned long nr_pages;
 	uint8_t flags;
-};
-
-struct criu_pagemap_entry_tracker{
-	struct criu_pagemap_entry entry;
-	bool dirty;
 	void * buffer;
-	TAILQ_ENTRY(criu_pagemap_entry_tracker) link;
 };
 
-TAILQ_HEAD(criu_pagemap_entries, criu_pagemap_entry_tracker);
+struct criu_dirty_page{
+	vaddr_t vaddr_start;
+	TAILQ_ENTRY(criu_dirty_page) link;
+};
+
+TAILQ_HEAD(criu_dirty_pagemap, criu_dirty_page);
 
 struct criu_checkpoint_regs {
 	uint64_t vregs[64];
@@ -65,9 +64,15 @@ enum criu_return_types {
 
 struct criu_checkpoint {
 	enum criu_return_types result;
+	// VMA's
 	struct criu_vm_area * vm_areas;
 	uint32_t vm_area_count;
-	struct criu_pagemap_entries pagemap_entries;
+	// Pagemap entries
+	struct criu_pagemap_entry * pagemap_entries;
+	uint32_t pagemap_entry_count;
+	// Dirty pages
+	struct criu_dirty_pagemap dirty_pagemap;
+	// Registers
 	struct criu_checkpoint_regs regs;
 	uint8_t l2_tables_index;
 };
