@@ -162,31 +162,30 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		free_checkpoint(&checkpoint);
 	
 	checkpoint = calloc(1, sizeof(struct criu_checkpoint));	
+
+	int size = 0;
+	int binaryData_index = 0;
+
+	// Copy the checkpoint struct with the registers
+	size = sizeof(struct criu_checkpoint);
+	memcpy(checkpoint, binaryData->memref.buffer + binaryData_index, size);
+	binaryData_index += size;
+
 	checkpoint->l2_tables_index = 0;
 	checkpoint->regs.fp_used = false;
-
 	TAILQ_INIT(&checkpoint->dirty_pagemap);
+	
+	// Copy over the vm areas
+	size = checkpoint->vm_area_count * sizeof(struct criu_vm_area);
+	checkpoint->vm_areas = calloc(1, size);
+	memcpy(checkpoint->vm_areas, binaryData->memref.buffer + binaryData_index, size);
+	binaryData_index += size;
 
-	if(!parse_checkpoint_core(checkpoint, binaryData->memref.buffer + checkpoint_file_var[CORE_FILE].buffer_index, checkpoint_file_var[CORE_FILE].file_size)) {
-		DMSG("Checkpoint file core-*.img file is not valid.");
-		return TEE_ERROR_BAD_FORMAT;
-	}
-
-	if(!parse_checkpoint_mm(checkpoint, binaryData->memref.buffer + checkpoint_file_var[MM_FILE].buffer_index, checkpoint_file_var[MM_FILE].file_size)) {
-		DMSG("Checkpoint file mm-*.img file is not valid.");
-		return TEE_ERROR_BAD_FORMAT;
-	}
-
-	if(!parse_checkpoint_pagemap(checkpoint, binaryData->memref.buffer + checkpoint_file_var[PAGEMAP_FILE].buffer_index, checkpoint_file_var[PAGEMAP_FILE].file_size)) {
-		DMSG("Checkpoint file pagemap-*.img file is not valid.");
-		return TEE_ERROR_BAD_FORMAT;
-	}
-
-	// DMSG("\nAFTER PARSING CHECKPOINT FILES:\n");
-	// DMSG("Areas: %d", checkpoint->vm_area_count);
-	// for(int y = 0; y < checkpoint->vm_area_count; y++) {
-	// 	DMSG("area[%d]: %p-%p - orig: %p - offset: %p", y, checkpoint->vm_areas[y].vm_start, checkpoint->vm_areas[y].vm_end, checkpoint->vm_areas[y].original_data, checkpoint->vm_areas[y].offset);
-	// }
+	// Copy over the pagemap entries
+	size = checkpoint->pagemap_entry_count * sizeof(struct criu_pagemap_entry);
+	checkpoint->pagemap_entries = calloc(1, size);
+	memcpy(checkpoint->pagemap_entries, binaryData->memref.buffer + binaryData_index, size);
+	binaryData_index += size;
 
 	// Create the user TA
 	if(utc != NULL) {
@@ -225,24 +224,17 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	struct criu_vm_area * area = checkpoint->vm_areas;
 	for(int i = 0; i < checkpoint->vm_area_count; i++) {
 		if(area[i].status & VMA_FILE_PRIVATE) {
-			area[i].original_data = binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
+			area[i].original_data = binaryDataInformation->memref.buffer 
+									+ checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
 		}
 	}
 
 	uint32_t pages_file_index = 0;
 	for(int i = 0; i < checkpoint->pagemap_entry_count; i++) {
-		checkpoint->pagemap_entries[i].buffer = binaryData->memref.buffer 		// Data buffer
+		checkpoint->pagemap_entries[i].buffer = binaryDataInformation->memref.buffer 		// Data buffer
 				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   		// Plus offset of the pages file
 				+ SMALL_PAGE_SIZE * pages_file_index;
 		pages_file_index += checkpoint->pagemap_entries[i].nr_pages;
-	}
-
-	for(int i = 0; i < checkpoint->pagemap_entry_count; i++) {
-		DMSG("entry vaddrstart: %p", checkpoint->pagemap_entries[i].vaddr_start);
-		DMSG("entry nr_pages: %d", checkpoint->pagemap_entries[i].nr_pages);
-		DMSG("entry file_page_index: %d", checkpoint->pagemap_entries[i].file_page_index);
-		DMSG("entry buffer: %d", checkpoint->pagemap_entries[i].buffer);
-		DMSG("----------------------------------------------------------");
 	}
 
 #ifndef CFG_DISABLE_PRINTS_FOR_CRIU
@@ -341,12 +333,12 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 #ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	IMSG("Got data from NW, size: %d and %d", params[0].memref.size, params[1].memref.size);
 
-	uint8_t files = params[1].memref.size / sizeof(struct checkpoint_file);
-	DMSG("Second argument contains information about %d checkpoint files", files);
-	if(files == CHECKPOINT_FILES)
-		DMSG("Which matches to the expected number: %d/%d", files, CHECKPOINT_FILES);
-	else
-		DMSG("Unexpected number of checkpoint files: %d/%d", files, CHECKPOINT_FILES);
+	// uint8_t files = params[1].memref.size / sizeof(struct checkpoint_file);
+	// DMSG("Second argument contains information about %d checkpoint files", files);
+	// if(files == CHECKPOINT_FILES)
+	// 	DMSG("Which matches to the expected number: %d/%d", files, CHECKPOINT_FILES);
+	// else
+	// 	DMSG("Unexpected number of checkpoint files: %d/%d", files, CHECKPOINT_FILES);
 #endif
 
 	// LOAD CHECKPOINT DATA

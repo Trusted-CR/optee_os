@@ -88,19 +88,14 @@ enum criu_pte_flags {
 };
 
 enum checkpoint_file_types { 
-	CORE_FILE = 0,			// core-*.img
-	MM_FILE,				// mm-*.img
-	PAGEMAP_FILE,			// pagemap-*.img
-	PAGES_BINARY_FILE,		// pages-*.img
-	EXECUTABLE_BINARY_FILE,	// The binary itself that is checkpointed
-	FD_INFO_FILE,			// fd_info-*.img
-	FILES_FILE				// files.img file
+	EXECUTABLE_BINARY_FILE = 0,		// The binary itself that is checkpointed
+	PAGES_BINARY_FILE,				// pages-*.img
+	CORE_FILE,						// core-*.img
+	MM_FILE,						// mm-*.img
+	PAGEMAP_FILE,					// pagemap-*.img
+	FD_INFO_FILE,					// fd_info-*.img
+	FILES_FILE						// files.img file
 };
-
-// Subtract the last enum from the first to determine the number of 
-// elements in the enum. By doing this we can use the enum values as indexes
-// to the checkpoint_files array. Example checkpoint_files[CORE_FILE].
-static const int CHECKPOINT_FILES = EXECUTABLE_BINARY_FILE - CORE_FILE + 1; 
 
 struct checkpoint_file {
 	enum checkpoint_file_types file_type;

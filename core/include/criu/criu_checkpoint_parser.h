@@ -39,11 +39,14 @@ char *sstrstr(char *haystack, char *needle, size_t length)
     return NULL;
 }
 
-static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
+static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
 	if(checkpoint == NULL) {
 		DMSG("Error: checkpoint struct is NULL");
 		return false;
 	}
+
+	char * json = checkpoint_files[PAGEMAP_FILE].buffer;
+	uint64_t file_size = checkpoint_files[PAGEMAP_FILE].file.file_size;
 
 	// Initialize the JSMN json parser
 	jsmn_parser parser;
@@ -107,18 +110,21 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, char *
 	return true;
 }
 
-static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
+static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
 	if(checkpoint == NULL) {
 		DMSG("Error: criu_checkpoint struct is NULL");
 		return false;
 	}
+
+	char * json = checkpoint_files[CORE_FILE].buffer;
+	uint64_t file_size = checkpoint_files[CORE_FILE].file.file_size;
 
 	// Initialize the JSMN json parser
 	jsmn_parser parser;
 	jsmn_init(&parser);
 
 	// First only determine the number of tokens.
-	int items = jsmn_parse(&parser, json, file_size, NULL, 128);\
+	int items = jsmn_parse(&parser, json, file_size, NULL, 128);
 
 	jsmntok_t tokens[items];
 	
@@ -178,11 +184,14 @@ static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * js
 	return true;
 }
 
-static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
+static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
 	if(checkpoint == NULL) {
 		DMSG("Error: criu_checkpoint struct is NULL");
 		return false;
 	}
+
+	char * json = checkpoint_files[MM_FILE].buffer;
+	uint64_t file_size = checkpoint_files[MM_FILE].file.file_size;
 
 	// Initialize the JSMN json parser
 	jsmn_parser parser;
