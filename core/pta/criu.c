@@ -231,8 +231,8 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	uint32_t pages_file_index = 0;
 	for(int i = 0; i < checkpoint->pagemap_entry_count; i++) {
-		checkpoint->pagemap_entries[i].buffer = binaryDataInformation->memref.buffer 		// Data buffer
-				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   		// Plus offset of the pages file
+		checkpoint->pagemap_entries[i].buffer = binaryDataInformation->memref.buffer 	// Data buffer
+				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   				// Plus offset of the pages file
 				+ SMALL_PAGE_SIZE * pages_file_index;
 		pages_file_index += checkpoint->pagemap_entries[i].nr_pages;
 	}
@@ -277,7 +277,7 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	TEE_Param * binaryData = &params[0];
+	TEE_Param * binaryData = &params[1];
 
 	tee_ta_push_current_session(s);
 
