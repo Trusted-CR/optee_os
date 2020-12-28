@@ -29,6 +29,14 @@ struct criu_dirty_page{
 	TAILQ_ENTRY(criu_dirty_page) link;
 };
 
+struct criu_merged_page {
+	bool is_new;
+	struct criu_pagemap_entry entry;
+	TAILQ_ENTRY(criu_merged_pagemap) link;
+};
+
+TAILQ_HEAD(criu_merged_pagemap, criu_merged_page);
+
 TAILQ_HEAD(criu_dirty_pagemap, criu_dirty_page);
 
 struct criu_checkpoint_regs {
