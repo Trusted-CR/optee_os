@@ -28,141 +28,6 @@ static struct criu_checkpoint * checkpoint = NULL;
 static struct tee_ta_session *s = NULL; 
 static struct user_ta_ctx * utc = NULL;
 
-static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
-	if(checkpoint == NULL) {
-		DMSG("Error: criu_checkpoint struct is NULL");
-		return false;
-	}
-
-	// Initialize the JSMN json parser
-	jsmn_parser parser;
-	jsmn_init(&parser);
-
-	// First only determine the number of tokens.
-	int items = jsmn_parse(&parser, json, file_size, NULL, 128);\
-
-	jsmntok_t tokens[items];
-	
-	// Reset position in stream
-	jsmn_init(&parser);
-	int left = jsmn_parse(&parser, json, file_size, tokens, items);
-
-	// Invalid file.
-	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
-		DMSG("CRIU: INVALID JSON\n");
-		return false;
-	}
-
-	// Parse the JSON version of the core checkpoint file (example core-2956.img)
-	for(int i = 1; i < items; i++) {
-		// Parse all registers
-		if (jsoneq(json, &tokens[i], "regs") == 0) { 
-			if(tokens[i+1].type == JSMN_ARRAY) {
-				for(int y = 0; y < tokens[i+1].size && (y < sizeof(checkpoint->regs)); y++) {
-					checkpoint->regs.regs[y] = strtoul(json + tokens[i+y+2].start, NULL, 16);
-				}
-			}
-		// Parse all the VFP registers
-		} else if(jsoneq(json, &tokens[i], "vregs") == 0) { 
-			if(tokens[i+1].type == JSMN_ARRAY) {
-				for(int y = 0; y < tokens[i+1].size && (y < sizeof(checkpoint->regs.vregs)); y++) {
-					checkpoint->regs.vregs[y] = strtoul(json + tokens[i+y+2].start, NULL, 10);
-				}
-			}
-		// Parse the checkpoint program counter
-		} else if(jsoneq(json, &tokens[i], "pc") == 0) { 
-			if(tokens[i+1].type == JSMN_STRING)
-				checkpoint->regs.entry_addr = strtoul(json + tokens[i+1].start, NULL, 16);
-		// Parse the checkpoint stack pointer
-		} else if(jsoneq(json, &tokens[i], "sp") == 0) { 
-			if(tokens[i+1].type == JSMN_STRING)
-				checkpoint->regs.stack_addr = strtoul(json + tokens[i+1].start, NULL, 16);	
-		// Parse the TPIDR_EL0 address
-		} else if(jsoneq(json, &tokens[i], "tls") == 0) { 
-			if(tokens[i+1].type == JSMN_PRIMITIVE)
-				checkpoint->regs.tpidr_el0_addr = strtoul(json + tokens[i+1].start, NULL, 10);
-		// Parse the processor state flags
-		} else if(jsoneq(json, &tokens[i], "pstate") == 0) { 
-			if(tokens[i+1].type == JSMN_STRING)
-				checkpoint->regs.pstate = strtoul(json + tokens[i+1].start, NULL, 16);
-		// Parse FPSR register
-		} else if(jsoneq(json, &tokens[i], "fpsr") == 0) { 
-			if(tokens[i+1].type == JSMN_PRIMITIVE)
-				checkpoint->regs.fpsr = strtoul(json + tokens[i+1].start, NULL, 10);
-		// Parse FPCR register
-		} else if(jsoneq(json, &tokens[i], "fpcr") == 0) { 
-			if(tokens[i+1].type == JSMN_PRIMITIVE)
-				checkpoint->regs.fpcr = strtoul(json + tokens[i+1].start, NULL, 10);
-		}
-	}
-
-	return true;
-}
-
-static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, char * json, uint64_t file_size) {
-	if(checkpoint == NULL) {
-		DMSG("Error: criu_checkpoint struct is NULL");
-		return false;
-	}
-
-	// Initialize the JSMN json parser
-	jsmn_parser parser;
-	jsmn_init(&parser);
-
-	// First only determine the number of tokens.
-	int items = jsmn_parse(&parser, json, file_size, NULL, 128);\
-
-	jsmntok_t tokens[items];
-	
-	// Reset position in stream
-	jsmn_init(&parser);
-	int left = jsmn_parse(&parser, json, file_size, tokens, items);
-
-	// Invalid file.
-	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
-		DMSG("CRIU: INVALID JSON\n");
-		return false;
-	}
-
-	// Parse the JSON version of the core checkpoint file (example core-2956.img)
-	for(int i = 1; i < items; i++) {
-		// Parse the vmas
-		if (jsoneq(json, &tokens[i], "vmas") == 0) {
-			if(tokens[i+1].type == JSMN_ARRAY) {
-				// Allocate the required number of VMA area structs
-				checkpoint->vm_area_count = tokens[++i].size; i++;
-				checkpoint->vm_areas = calloc(1, sizeof(struct criu_vm_area) * checkpoint->vm_area_count);
-
-				for(int y = 0; y < checkpoint->vm_area_count; y++, i += (tokens[i].size * 2) + 1) {
-					// Set the VMA addresses, offset and initialize the other fields.
-					checkpoint->vm_areas[y].vm_start   = strtoul(json + tokens[i+2].start, NULL, 16);
-					checkpoint->vm_areas[y].vm_end     = strtoul(json + tokens[i+4].start, NULL, 16);
-					checkpoint->vm_areas[y].offset     = strtoul(json + tokens[i+6].start, NULL, 10);
-					checkpoint->vm_areas[y].protection = 0;
-					checkpoint->vm_areas[y].status     = 0;
-					checkpoint->vm_areas[y].dirty      = false;
-					
-					// Parse the VMA protection bits
-					if(sstrstr(json + tokens[i+10].start, "PROT_READ", tokens[i+10].end - tokens[i+10].start) != NULL)
-						checkpoint->vm_areas[y].protection |= TEE_MATTR_UR;
-					if(sstrstr(json + tokens[i+10].start, "PROT_WRITE", tokens[i+10].end - tokens[i+10].start) != NULL)
-						checkpoint->vm_areas[y].protection |= TEE_MATTR_UW;
-					if(sstrstr(json + tokens[i+10].start, "PROT_EXEC", tokens[i+10].end - tokens[i+10].start) != NULL)
-						checkpoint->vm_areas[y].protection |= TEE_MATTR_UX;
-
-					// Parse the VMA status bits
-					if(sstrstr(json + tokens[i+14].start, "VMA_FILE_PRIVATE", tokens[i+14].end - tokens[i+14].start) != NULL)
-						checkpoint->vm_areas[y].status |= VMA_FILE_PRIVATE;
-				}
-
-				return true;
-			}
-		}
-	}
-
-	return true;
-}
-
 static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
 	TEE_Result res;
 	struct user_ta_ctx *utc = NULL;
@@ -247,28 +112,24 @@ static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * s
 	}
 }
 
-void copy_pagemap_entry(struct criu_pagemap_entry_tracker * entry, void * buffer) {
-	if(entry != NULL && entry->entry.vaddr_start != NULL)
-		memcpy((void *)entry->entry.vaddr_start, buffer, entry->entry.nr_pages * SMALL_PAGE_SIZE);
-}
-
-void copy_vm_area_data(struct criu_vm_area * area) {
-	if(area->original_data != NULL)
-		memcpy((void *)area->vm_start, area->original_data + area->offset, area->vm_end - area->vm_start);
-}
-
 static void free_checkpoint(struct criu_checkpoint ** check) {
-	struct criu_pagemap_entry_tracker * entry = NULL;
+	struct criu_dirty_page * entry = NULL;
 	struct criu_checkpoint * c = *check;
 
-	TAILQ_FOREACH(entry, &c->pagemap_entries, link) {
-		// Free all allocated criu_pagemap_entry structs
-		free(entry);
+	if(!TAILQ_EMPTY(&c->dirty_pagemap)) {
+		TAILQ_FOREACH_REVERSE(entry, &c->dirty_pagemap, criu_dirty_pagemap, link) {
+			TAILQ_REMOVE(&c->dirty_pagemap, entry, link);
+			free(entry);
+		}
 	}
 
 	// Free all allocated criu_vm_area structs
 	if(c->vm_areas != NULL)
 		free(c->vm_areas);
+
+	if(c->pagemap_entries != NULL) {
+		free(c->pagemap_entries);
+	}
 
 	free(c);
 
@@ -301,31 +162,30 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 		free_checkpoint(&checkpoint);
 	
 	checkpoint = calloc(1, sizeof(struct criu_checkpoint));	
+
+	int size = 0;
+	int binaryData_index = 0;
+
+	// Copy the checkpoint struct with the registers
+	size = sizeof(struct criu_checkpoint);
+	memcpy(checkpoint, binaryData->memref.buffer + binaryData_index, size);
+	binaryData_index += size;
+
 	checkpoint->l2_tables_index = 0;
 	checkpoint->regs.fp_used = false;
+	TAILQ_INIT(&checkpoint->dirty_pagemap);
+	
+	// Copy over the vm areas
+	size = checkpoint->vm_area_count * sizeof(struct criu_vm_area);
+	checkpoint->vm_areas = calloc(1, size);
+	memcpy(checkpoint->vm_areas, binaryData->memref.buffer + binaryData_index, size);
+	binaryData_index += size;
 
-	TAILQ_INIT(&checkpoint->pagemap_entries);
-
-	if(!parse_checkpoint_core(checkpoint, binaryData->memref.buffer + checkpoint_file_var[CORE_FILE].buffer_index, checkpoint_file_var[CORE_FILE].file_size)) {
-		DMSG("Checkpoint file core-*.img file is not valid.");
-		return TEE_ERROR_BAD_FORMAT;
-	}
-
-	if(!parse_checkpoint_mm(checkpoint, binaryData->memref.buffer + checkpoint_file_var[MM_FILE].buffer_index, checkpoint_file_var[MM_FILE].file_size)) {
-		DMSG("Checkpoint file mm-*.img file is not valid.");
-		return TEE_ERROR_BAD_FORMAT;
-	}
-
-	if(!parse_checkpoint_pagemap(&checkpoint->pagemap_entries, binaryData->memref.buffer + checkpoint_file_var[PAGEMAP_FILE].buffer_index, checkpoint_file_var[PAGEMAP_FILE].file_size)) {
-		DMSG("Checkpoint file pagemap-*.img file is not valid.");
-		return TEE_ERROR_BAD_FORMAT;
-	}
-
-	// DMSG("\nAFTER PARSING CHECKPOINT FILES:\n");
-	// DMSG("Areas: %d", checkpoint->vm_area_count);
-	// for(int y = 0; y < checkpoint->vm_area_count; y++) {
-	// 	DMSG("area[%d]: %p-%p - orig: %p - offset: %p", y, checkpoint->vm_areas[y].vm_start, checkpoint->vm_areas[y].vm_end, checkpoint->vm_areas[y].original_data, checkpoint->vm_areas[y].offset);
-	// }
+	// Copy over the pagemap entries
+	size = checkpoint->pagemap_entry_count * sizeof(struct criu_pagemap_entry);
+	checkpoint->pagemap_entries = calloc(1, size);
+	memcpy(checkpoint->pagemap_entries, binaryData->memref.buffer + binaryData_index, size);
+	binaryData_index += size;
 
 	// Create the user TA
 	if(utc != NULL) {
@@ -364,26 +224,18 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	struct criu_vm_area * area = checkpoint->vm_areas;
 	for(int i = 0; i < checkpoint->vm_area_count; i++) {
 		if(area[i].status & VMA_FILE_PRIVATE) {
-			area[i].original_data = binaryData->memref.buffer + checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
+			area[i].original_data = binaryDataInformation->memref.buffer 
+									+ checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
 		}
 	}
 
 	uint32_t pages_file_index = 0;
-	struct criu_pagemap_entry_tracker * entry = NULL;
-	TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
-		entry->buffer = binaryData->memref.buffer 								// Data buffer
-				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   // Plus offset of the pages file
+	for(int i = 0; i < checkpoint->pagemap_entry_count; i++) {
+		checkpoint->pagemap_entries[i].buffer = binaryDataInformation->memref.buffer 	// Data buffer
+				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   				// Plus offset of the pages file
 				+ SMALL_PAGE_SIZE * pages_file_index;
-		pages_file_index += entry->entry.nr_pages;
+		pages_file_index += checkpoint->pagemap_entries[i].nr_pages;
 	}
-
-	// TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
-	// 	DMSG("entry vaddrstart: %p", entry->entry.vaddr_start);
-	// 	DMSG("entry nr_pages: %d", entry->entry.nr_pages);
-	// 	DMSG("entry file_page_index: %d", entry->entry.file_page_index);
-	// 	DMSG("entry buffer: %d", entry->buffer);
-	// 	DMSG("----------------------------------------------------------");
-	// }
 
 #ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	DMSG("\n\nCRIU - BINARY LOAD ADDRESS %#"PRIxVA, utc->entry_func);
@@ -402,9 +254,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	// Copy the return value in the buffer.
 	long index = 0;
-	memcpy(binaryData->memref.buffer, &checkpoint->result, sizeof(enum criu_return_types)); 
+	memcpy(binaryDataInformation->memref.buffer, &checkpoint->result, sizeof(enum criu_return_types)); 
 	index += sizeof(enum criu_return_types);
-	memcpy(binaryData->memref.buffer + index, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
+	memcpy(binaryDataInformation->memref.buffer + index, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
 	index += sizeof(struct criu_checkpoint_regs);
 
 	tee_ta_pop_current_session();
@@ -425,7 +277,7 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	TEE_Param * binaryData = &params[0];
+	TEE_Param * binaryData = &params[1];
 
 	tee_ta_push_current_session(s);
 
@@ -440,23 +292,19 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 	
 	dirty_pages_info->dirty_page_count = 0;
 	
-	struct criu_pagemap_entry_tracker * entry = NULL;
-	TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
-		if(entry->dirty) {
-			// DMSG("GOT A DIRTY ENTRY HERE: %p - %p - %d", entry->entry.vaddr_start, entry->entry.vaddr_start + (entry->entry.nr_pages * SMALL_PAGE_SIZE), entry->entry.nr_pages);
+	struct criu_dirty_page * entry = NULL;
+	TAILQ_FOREACH(entry, &checkpoint->dirty_pagemap, link) {
+		// DMSG("GOT A DIRTY ENTRY HERE: %p", entry->vaddr_start);
 
-			dirty_pages_info->dirty_page_count++;
-			memcpy(binaryData->memref.buffer + index, &entry->entry, sizeof(struct criu_pagemap_entry));
-			index += sizeof(struct criu_pagemap_entry);
-		}
+		dirty_pages_info->dirty_page_count++;
+		memcpy(binaryData->memref.buffer + index, entry, sizeof(struct criu_dirty_page));
+		index += sizeof(struct criu_dirty_page);
 	}
 
 	dirty_pages_info->offset = index;
-	TAILQ_FOREACH(entry, &checkpoint->pagemap_entries, link) {
-		if(entry->dirty) {
-			memcpy(binaryData->memref.buffer + index, entry->entry.vaddr_start, entry->entry.nr_pages * SMALL_PAGE_SIZE);
-			index += entry->entry.nr_pages * SMALL_PAGE_SIZE;
-		}
+	TAILQ_FOREACH(entry, &checkpoint->dirty_pagemap, link) {
+		memcpy(binaryData->memref.buffer + index, entry->vaddr_start, SMALL_PAGE_SIZE);
+		index += SMALL_PAGE_SIZE;
 	}
 
 	tee_ta_pop_current_session();
@@ -485,12 +333,12 @@ static TEE_Result criu_load_checkpoint(uint32_t param_types,
 #ifndef CFG_DISABLE_PRINTS_FOR_CRIU
 	IMSG("Got data from NW, size: %d and %d", params[0].memref.size, params[1].memref.size);
 
-	uint8_t files = params[1].memref.size / sizeof(struct checkpoint_file);
-	DMSG("Second argument contains information about %d checkpoint files", files);
-	if(files == CHECKPOINT_FILES)
-		DMSG("Which matches to the expected number: %d/%d", files, CHECKPOINT_FILES);
-	else
-		DMSG("Unexpected number of checkpoint files: %d/%d", files, CHECKPOINT_FILES);
+	// uint8_t files = params[1].memref.size / sizeof(struct checkpoint_file);
+	// DMSG("Second argument contains information about %d checkpoint files", files);
+	// if(files == CHECKPOINT_FILES)
+	// 	DMSG("Which matches to the expected number: %d/%d", files, CHECKPOINT_FILES);
+	// else
+	// 	DMSG("Unexpected number of checkpoint files: %d/%d", files, CHECKPOINT_FILES);
 #endif
 
 	// LOAD CHECKPOINT DATA
