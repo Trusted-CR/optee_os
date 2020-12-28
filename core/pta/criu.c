@@ -297,7 +297,7 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 		DMSG("GOT A DIRTY ENTRY HERE: %p", entry->vaddr_start);
 
 		dirty_pages_info->dirty_page_count++;
-		memcpy(binaryData->memref.buffer + index, &entry, sizeof(struct criu_dirty_page));
+		memcpy(binaryData->memref.buffer + index, entry, sizeof(struct criu_dirty_page));
 		index += sizeof(struct criu_dirty_page);
 	}
 
