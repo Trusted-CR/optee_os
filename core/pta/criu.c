@@ -254,9 +254,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	// Copy the return value in the buffer.
 	long index = 0;
-	memcpy(binaryData->memref.buffer, &checkpoint->result, sizeof(enum criu_return_types)); 
+	memcpy(binaryDataInformation->memref.buffer, &checkpoint->result, sizeof(enum criu_return_types)); 
 	index += sizeof(enum criu_return_types);
-	memcpy(binaryData->memref.buffer + index, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
+	memcpy(binaryDataInformation->memref.buffer + index, &checkpoint->regs, sizeof(struct criu_checkpoint_regs));
 	index += sizeof(struct criu_checkpoint_regs);
 
 	tee_ta_pop_current_session();
@@ -294,7 +294,7 @@ static TEE_Result criu_checkpoint_back(uint32_t param_types,
 	
 	struct criu_dirty_page * entry = NULL;
 	TAILQ_FOREACH(entry, &checkpoint->dirty_pagemap, link) {
-		DMSG("GOT A DIRTY ENTRY HERE: %p", entry->vaddr_start);
+		// DMSG("GOT A DIRTY ENTRY HERE: %p", entry->vaddr_start);
 
 		dirty_pages_info->dirty_page_count++;
 		memcpy(binaryData->memref.buffer + index, entry, sizeof(struct criu_dirty_page));

@@ -274,12 +274,12 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 					// On success, the number of bytes written is returned
 					set_svc_retval(regs, num_of_bytes);
 
-					if(max_number_of_prints-- <= 0) {
-						stop_execution = true;
-						checkpoint->result = CRIU_MIGRATE_BACK;
-					} else {
+					// if(max_number_of_prints-- <= 0) {
+						// stop_execution = true;
+						// checkpoint->result = CRIU_MIGRATE_BACK;
+					// } else {
 						return true;
-					}
+					// }
 				} else {
 					DMSG("Will need to handle file write to fd: %d", fd);
 					stop_execution = true;
