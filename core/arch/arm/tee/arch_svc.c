@@ -258,7 +258,12 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			bool stop_execution = false;
 			static int max_number_of_prints = 10;
 			
-			if(scn == CRIU_SYSCALL_EXIT || scn == CRIU_SYSCALL_EXIT_GROUP) {
+			if(scn == CRIU_SYSCALL_MIGRATE_BACK) {
+				DMSG("Program asks to migrate back");
+				regs->x[1] = 0;
+				stop_execution = true;
+				checkpoint->result = CRIU_SYSCALL_MIGRATE_BACK;
+			} else if(scn == CRIU_SYSCALL_EXIT || scn == CRIU_SYSCALL_EXIT_GROUP) {
 				DMSG("syscall sys_exit/sys_exit_group handled");
 				scn = 0;
 				stop_execution = true;
