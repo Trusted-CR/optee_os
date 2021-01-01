@@ -97,13 +97,12 @@ enum criu_pte_flags {
 };
 
 enum checkpoint_file_types { 
-	EXECUTABLE_BINARY_FILE = 0,		// The binary itself that is checkpointed
-	PAGES_BINARY_FILE,				// pages-*.img
-	CORE_FILE,						// core-*.img
+	CORE_FILE = 0,						// core-*.img
 	MM_FILE,						// mm-*.img
 	PAGEMAP_FILE,					// pagemap-*.img
-	FD_INFO_FILE,					// fd_info-*.img
-	FILES_FILE						// files.img file
+	FILES_FILE,						// files.img file
+	PAGES_BINARY_FILE,				// pages-*.img
+	EXECUTABLE_BINARY_FILE			// The binary itself that is checkpointed
 };
 
 struct checkpoint_file {

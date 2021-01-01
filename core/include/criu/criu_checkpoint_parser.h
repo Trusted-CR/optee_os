@@ -39,6 +39,58 @@ char *sstrstr(char *haystack, char *needle, size_t length)
     return NULL;
 }
 
+static bool parse_executable_name(struct checkpoint_file_data * checkpoint_files) {
+	char * json = checkpoint_files[FILES_FILE].buffer;
+	uint64_t file_size = checkpoint_files[FILES_FILE].file.file_size;
+
+	// Initialize the JSMN json parser
+	jsmn_parser parser;
+	jsmn_init(&parser);
+
+	// First only determine the number of tokens.
+	int items = jsmn_parse(&parser, json, file_size, NULL, 128);
+
+	jsmntok_t tokens[items];
+	
+	// Reset position in stream
+	jsmn_init(&parser);
+	int left = jsmn_parse(&parser, json, file_size, tokens, items);
+
+	// Invalid file.
+	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
+		DMSG("CRIU: INVALID JSON\n");
+		return false;
+	}
+
+	for(int i = 1; i < items; i++) {
+		// Find entry with id 1 and parse the filename. This is the executable
+		if (jsoneq(json, &tokens[i], "id") == 0) {
+			if(tokens[i+1].type == JSMN_PRIMITIVE) {
+				int id = strtoul(json + tokens[i+1].start, NULL, 10);
+				if(id == 1) {
+					for(int y = i+1; y < items; y++) {
+						if (jsoneq(json, &tokens[y], "name") == 0) {
+							if(tokens[y+1].type == JSMN_STRING) {
+								int str_size = tokens[y+1].end - tokens[y+1].start + 1; // +1 for 0-character
+								checkpoint_files[EXECUTABLE_BINARY_FILE].filename = malloc(str_size);
+								memcpy(checkpoint_files[EXECUTABLE_BINARY_FILE].filename, json + tokens[y+1].start, str_size - 1);
+								checkpoint_files[EXECUTABLE_BINARY_FILE].filename[str_size-1] = 0;
+								return true;	
+							}
+
+							break;
+						}
+					}
+
+					break;
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
 static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
 	if(checkpoint == NULL) {
 		DMSG("Error: checkpoint struct is NULL");
@@ -53,7 +105,7 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, struct
 	jsmn_init(&parser);
 
 	// First only determine the number of tokens.
-	int items = jsmn_parse(&parser, json, file_size, NULL, 128);\
+	int items = jsmn_parse(&parser, json, file_size, NULL, 128);
 
 	jsmntok_t tokens[items];
 	
@@ -198,7 +250,7 @@ static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, struct chec
 	jsmn_init(&parser);
 
 	// First only determine the number of tokens.
-	int items = jsmn_parse(&parser, json, file_size, NULL, 128);\
+	int items = jsmn_parse(&parser, json, file_size, NULL, 128);
 
 	jsmntok_t tokens[items];
 	
