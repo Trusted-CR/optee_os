@@ -91,9 +91,9 @@ static bool parse_executable_name(struct checkpoint_file_data * checkpoint_files
 	return true;
 }
 
-static int parse_checkpoint_pstree(struct checkpoint_file_data * checkpoint_files) {
-	char * json = checkpoint_files[PSTREE_FILE].buffer;
-	uint64_t file_size = checkpoint_files[PSTREE_FILE].file.file_size;
+static int parse_checkpoint_pstree(struct checkpoint_file_data * pstree_file) {
+	char * json = pstree_file->buffer;
+	uint64_t file_size = pstree_file->file.file_size;
 
 	// Initialize the JSMN json parser
 	jsmn_parser parser;

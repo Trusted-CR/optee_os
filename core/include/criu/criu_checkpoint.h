@@ -102,7 +102,6 @@ enum checkpoint_file_types {
 	MM_FILE,						// mm-*.img
 	PAGEMAP_FILE,					// pagemap-*.img
 	FILES_FILE,						// files.img file
-	PSTREE_FILE,					// pstree.img file
 	NUMBER_OF_CHECKPOINT_FILES		// use this little hack to determine the number of elements in the enum
 };
 
