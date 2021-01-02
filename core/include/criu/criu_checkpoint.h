@@ -102,7 +102,8 @@ enum checkpoint_file_types {
 	CORE_FILE,						// core-*.img
 	MM_FILE,						// mm-*.img
 	PAGEMAP_FILE,					// pagemap-*.img
-	FILES_FILE						// files.img file
+	FILES_FILE,						// files.img file
+	PSTREE_FILE						// pstree.img file
 };
 
 struct checkpoint_file {
