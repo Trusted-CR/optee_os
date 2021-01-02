@@ -91,6 +91,42 @@ static bool parse_executable_name(struct checkpoint_file_data * checkpoint_files
 	return true;
 }
 
+static int parse_checkpoint_pstree(struct checkpoint_file_data * checkpoint_files) {
+	char * json = checkpoint_files[PSTREE_FILE].buffer;
+	uint64_t file_size = checkpoint_files[PSTREE_FILE].file.file_size;
+
+	// Initialize the JSMN json parser
+	jsmn_parser parser;
+	jsmn_init(&parser);
+
+	// First only determine the number of tokens.
+	int items = jsmn_parse(&parser, json, file_size, NULL, 128);
+
+	jsmntok_t tokens[items];
+	
+	// Reset position in stream
+	jsmn_init(&parser);
+	int left = jsmn_parse(&parser, json, file_size, tokens, items);
+
+	// Invalid file.
+	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
+		DMSG("CRIU: INVALID JSON\n");
+		return false;
+	}
+
+	for(int i = 1; i < items; i++) {
+		// Find entry with id 1 and parse the filename. This is the executable
+		if (jsoneq(json, &tokens[i], "pid") == 0) {
+			if(tokens[i+1].type == JSMN_PRIMITIVE) {
+				int pid = strtoul(json + tokens[i+1].start, NULL, 10);
+				return pid;
+			}
+		}
+	}
+
+	return -1;
+}
+
 static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
 	if(checkpoint == NULL) {
 		DMSG("Error: checkpoint struct is NULL");

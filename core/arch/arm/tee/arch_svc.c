@@ -281,7 +281,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 					// if(max_number_of_prints-- <= 0) {
 						// stop_execution = true;
-						// checkpoint->result = CRIU_MIGRATE_BACK;
+						// checkpoint->result = CRIU_SYSCALL_MIGRATE_BACK;
 					// } else {
 						return true;
 					// }
