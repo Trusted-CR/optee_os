@@ -9,7 +9,6 @@ void checkpoint_back(struct thread_abort_regs *a_regs, struct thread_svc_regs *s
 		if(ctx->uctx.is_trusted_cr_checkpoint) {
 			struct trusted_cr_checkpoint * checkpoint = ctx->uctx.checkpoint;
 
-
             uint64_t * abort_regs;
             if(a_regs != NULL)
                 abort_regs = &a_regs->x0;

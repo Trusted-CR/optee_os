@@ -250,6 +250,8 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 #ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 	DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
 #endif
+
+	// Check if it is a trusted_cr checkpoint
 	struct thread_specific_data *tsd = thread_get_tsd();
 	if(is_user_ta_ctx(tsd->ctx)) {
 		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
@@ -269,11 +271,18 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				stop_execution = true;
 				checkpoint->result = TRUSTED_CR_SYSCALL_EXIT;
 			} else if (scn == TRUSTED_CR_SYSCALL_WRITE) {
+				// String size is stored in x2
 				int num_of_bytes = regs->x[2];
 				char temp_string[num_of_bytes+1];
+
+				// File descriptor is stored in x0
 				int fd = regs->x[0];
+
+				// String data at memory address in x1
 				memcpy(temp_string, regs->x[1], num_of_bytes);
 				temp_string[num_of_bytes+1] = 0;
+
+				// When fd is 0, 1 or 2 it is standard in/out so print in the secure world.
 				if(fd < 3) {
 					DMSG("syscall write handled: fd:%d - %s", fd, temp_string);
 					// On success, the number of bytes written is returned
@@ -299,10 +308,8 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 #ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 				DMSG("Time to stop execution");
 #endif
-
 				checkpoint_back(NULL, regs, regs->elr - 4);
 
-				// Temporarily to test returning to the normal world, otherwise it would keep running
 				return TEE_SCN_RETURN;
 			}
 		}
