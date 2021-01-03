@@ -635,11 +635,11 @@ static paddr_t get_pmem_pa(struct tee_pager_pmem *pmem)
 	return pa;
 }
 
-static bool criu_is_checkpoint_address(vaddr_t page_va) {
+static bool trusted_cr_is_checkpoint_address(vaddr_t page_va) {
 	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 	if(is_user_mode_ctx(ctx)) {
 		struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
-		if(uctx->is_criu_checkpoint) {
+		if(uctx->is_trusted_cr_checkpoint) {
 			// Check if the va address is valid within the vm areas range
 			for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
 				if(page_va >= uctx->checkpoint->vm_areas[i].vm_start &&
@@ -653,11 +653,11 @@ static bool criu_is_checkpoint_address(vaddr_t page_va) {
 	return false;
 }
 
-static bool criu_load_page(vaddr_t page_va, void * va_alias ) {
+static bool trusted_cr_load_page(vaddr_t page_va, void * va_alias ) {
 	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 	if(is_user_mode_ctx(ctx)) {
 		struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
-		if(uctx->is_criu_checkpoint) {
+		if(uctx->is_trusted_cr_checkpoint) {
 			// First check if the va address is valid within the vm areas range
 			for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
 				if(page_va >= uctx->checkpoint->vm_areas[i].vm_start &&
@@ -725,9 +725,9 @@ static void tee_pager_load_page(struct tee_pager_area *area, vaddr_t page_va,
 	}
 
 	if(!dirty_page) {
-		if(criu_is_checkpoint_address(page_va)) {
-			// DMSG("the page is not dirty and it is a criu address!!");
-			criu_load_page(page_va, va_alias);
+		if(trusted_cr_is_checkpoint_address(page_va)) {
+			// DMSG("the page is not dirty and it is a trusted_cr address!!");
+			trusted_cr_load_page(page_va, va_alias);
 		}
 	}
 
@@ -1431,7 +1431,7 @@ static struct tee_pager_pmem *tee_pager_get_page(enum tee_pager_area_type at)
 
 static void add_dirty_entry(vaddr_t dirty_address, struct user_mode_ctx * uctx) {
 	// DMSG("Adding dirty entry: %p", dirty_address);
-	struct criu_dirty_page * entry = calloc(1, sizeof(struct criu_dirty_page));
+	struct trusted_cr_dirty_page * entry = calloc(1, sizeof(struct trusted_cr_dirty_page));
 	if(entry != NULL) {
 		entry->vaddr_start = dirty_address;		
 		TAILQ_INSERT_TAIL(&uctx->checkpoint->dirty_pagemap, entry, link);
@@ -1446,13 +1446,13 @@ static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
 	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 	if(is_user_mode_ctx(ctx)) {
 		struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
-		if(uctx->is_criu_checkpoint) {
-			struct criu_checkpoint * checkpoint = uctx->checkpoint;
+		if(uctx->is_trusted_cr_checkpoint) {
+			struct trusted_cr_checkpoint * checkpoint = uctx->checkpoint;
 			vaddr_t dirty_address = ai->va & ~SMALL_PAGE_MASK;
 		
 			bool dirty_checkpoint_entry = false;
 
-			struct criu_vm_area * vm_areas;
+			struct trusted_cr_vm_area * vm_areas;
 			for(int i = 0; i < checkpoint->vm_area_count; i++) {
 				if((checkpoint->vm_areas[i].vm_start <= ai->va) && (ai->va < checkpoint->vm_areas[i].vm_end)) {
 					dirty_checkpoint_entry = true;
@@ -1462,7 +1462,7 @@ static bool mark_checkpoint_areas_dirty(struct abort_info *ai) {
 
 			if(dirty_checkpoint_entry) {
 				bool already_exists = false;
-				struct criu_dirty_page * entry = NULL;
+				struct trusted_cr_dirty_page * entry = NULL;
 				TAILQ_FOREACH(entry, &uctx->checkpoint->dirty_pagemap, link) {
 					if(entry->vaddr_start == dirty_address) {
 						already_exists = true;
@@ -1580,7 +1580,7 @@ static void stat_handle_fault(void)
 
 	num_faults++;
 	if ((num_faults % 1024) == 0 || tee_pager_npages < total_min_npages) {
-#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
+#ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 		DMSG("nfaults %zu npages %zu (min %zu)",
 		     num_faults, tee_pager_npages, min_npages);
 #endif
@@ -1644,7 +1644,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 		if(is_user_mode_ctx(ctx)) {
 			uctx = to_user_mode_ctx(ctx);
-			if(uctx->is_criu_checkpoint) {
+			if(uctx->is_trusted_cr_checkpoint) {
 				// First check if the va address is valid within the vm areas range
 				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
 					if(ai->va >= uctx->checkpoint->vm_areas[i].vm_start &&
@@ -1654,14 +1654,14 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
 
 						// First try to map only one single page.
-						TEE_Result res = criu_alloc_and_map_ldelf_fobj(utc, 1, uctx->checkpoint->vm_areas[i].protection, &page_va);
+						TEE_Result res = trusted_cr_alloc_and_map_ldelf_fobj(utc, 1, uctx->checkpoint->vm_areas[i].protection, &page_va);
 						if(res != TEE_SUCCESS) {
 							if(res == TEE_ERROR_OUT_OF_MEMORY)
 								DMSG("Unable to map checkpointed page, out of memory.");
 							else
 								DMSG("Unable to map checkpointed page %p, error: %p", ai->va, res);
 								
-							utc->uctx.checkpoint->result = CRIU_OUT_OF_MEMORY;
+							utc->uctx.checkpoint->result = TRUSTED_CR_OUT_OF_MEMORY;
 							return false;
 						}
 					

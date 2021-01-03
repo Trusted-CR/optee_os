@@ -495,7 +495,7 @@ TEE_Result tee_ta_close_session(struct tee_ta_session *csess,
 	struct tee_ta_ctx *ctx;
 	bool keep_alive;
 
-#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
+#ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 	DMSG("csess 0x%" PRIxVA " id %u",
 	     (vaddr_t)csess, csess ? csess->id : UINT_MAX);
 #endif
@@ -517,7 +517,7 @@ TEE_Result tee_ta_close_session(struct tee_ta_session *csess,
 	}
 
 	ctx = sess->ctx;
-#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
+#ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 	DMSG("Destroy session");
 #endif
 
@@ -574,7 +574,7 @@ static TEE_Result tee_ta_init_session_with_context(struct tee_ta_ctx *ctx,
 	if (!(ctx->flags & TA_FLAG_MULTI_SESSION) && ctx->ref_count)
 		return TEE_ERROR_BUSY;
 
-#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
+#ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 	DMSG("Re-open TA %pUl", (void *)&ctx->uuid);
 #endif
 	ctx->ref_count++;
@@ -834,8 +834,8 @@ static void update_current_ctx(struct thread_specific_data *tsd)
 	}
 
 	if (tsd->ctx != ctx) {
-		if(is_user_ta_ctx(ctx) && to_user_ta_ctx(ctx)->uctx.is_criu_checkpoint) {
-			criu_tee_mmu_set_ctx(ctx);
+		if(is_user_ta_ctx(ctx) && to_user_ta_ctx(ctx)->uctx.is_trusted_cr_checkpoint) {
+			trusted_cr_tee_mmu_set_ctx(ctx);
 		} else {
 			tee_mmu_set_ctx(ctx);
 		}
@@ -844,7 +844,7 @@ static void update_current_ctx(struct thread_specific_data *tsd)
 	/*
 	 * If current context is of user mode, then it has to be active too.
 	 */
-	if (is_user_mode_ctx(ctx) && !to_user_mode_ctx(ctx)->is_criu_checkpoint && !core_mmu_user_mapping_is_active())
+	if (is_user_mode_ctx(ctx) && !to_user_mode_ctx(ctx)->is_trusted_cr_checkpoint && !core_mmu_user_mapping_is_active())
 		panic("unexpected active mapping");
 }
 

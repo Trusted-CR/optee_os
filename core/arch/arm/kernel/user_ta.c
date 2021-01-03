@@ -580,7 +580,7 @@ static void free_utc(struct user_ta_ctx *utc)
 	free(utc);
 }
 
-void criu_free_utc(struct user_ta_ctx *utc) {
+void trusted_cr_free_utc(struct user_ta_ctx *utc) {
 	free_utc(utc);
 }
 
@@ -626,7 +626,7 @@ static void set_ta_ctx_ops(struct tee_ta_ctx *ctx)
 	ctx->ops = _user_ta_ops;
 }
 
-void criu_set_ta_ctx_ops(struct tee_ta_ctx *ctx) {
+void trusted_cr_set_ta_ctx_ops(struct tee_ta_ctx *ctx) {
 	set_ta_ctx_ops(ctx);
 }
 
@@ -664,7 +664,7 @@ static TEE_Result alloc_and_map_ldelf_fobj(struct user_ta_ctx *utc, size_t sz,
 	return res;
 }
 
-TEE_Result criu_alloc_and_map_ldelf_fobj(struct user_ta_ctx *utc, size_t sz,
+TEE_Result trusted_cr_alloc_and_map_ldelf_fobj(struct user_ta_ctx *utc, size_t sz,
 					   uint32_t prot, vaddr_t *va)
 {
 	// Allocate the pages
@@ -678,7 +678,7 @@ TEE_Result criu_alloc_and_map_ldelf_fobj(struct user_ta_ctx *utc, size_t sz,
 		return TEE_ERROR_OUT_OF_MEMORY;
 
 	// Map the virtual memory areas 
-	res = criu_vm_map(&utc->uctx, va, num_pgs * SMALL_PAGE_SIZE,
+	res = trusted_cr_vm_map(&utc->uctx, va, num_pgs * SMALL_PAGE_SIZE,
 		     prot, VM_FLAG_LDELF, mobj, 0);
 	mobj_put(mobj);
 

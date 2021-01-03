@@ -1,9 +1,9 @@
-#ifndef __CRIU_CHECKPOINT_PARSER_H
-#define __CRIU_CHECKPOINT_PARSER_H
+#ifndef __TRUSTED_CR_CHECKPOINT_PARSER_H
+#define __TRUSTED_CR_CHECKPOINT_PARSER_H
 
 #include <string.h>
 #include <stdint.h>
-#include "criu_checkpoint.h"
+#include "trusted_cr_checkpoint.h"
 #include "jsmn.h"
 #include <sys/queue.h>
 
@@ -58,7 +58,7 @@ static bool parse_executable_name(struct checkpoint_file_data * checkpoint_files
 
 	// Invalid file.
 	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
-		DMSG("CRIU: INVALID JSON\n");
+		DMSG("TRUSTED_CR: INVALID JSON\n");
 		return false;
 	}
 
@@ -110,7 +110,7 @@ static int parse_checkpoint_pstree(struct checkpoint_file_data * pstree_file) {
 
 	// Invalid file.
 	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
-		DMSG("CRIU: INVALID JSON\n");
+		DMSG("TRUSTED_CR: INVALID JSON\n");
 		return false;
 	}
 
@@ -127,7 +127,7 @@ static int parse_checkpoint_pstree(struct checkpoint_file_data * pstree_file) {
 	return -1;
 }
 
-static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
+static bool parse_checkpoint_pagemap(struct trusted_cr_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
 	if(checkpoint == NULL) {
 		DMSG("Error: checkpoint struct is NULL");
 		return false;
@@ -151,7 +151,7 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, struct
 
 	// Invalid file.
 	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
-		DMSG("CRIU: INVALID JSON\n");
+		DMSG("TRUSTED_CR: INVALID JSON\n");
 		return false;
 	}
 
@@ -164,7 +164,7 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, struct
 				// size - 1 as the first entry is "pages_id": 1, checkout pagemap-*.txt
 				// i += 4 to skip the first entry.
 				checkpoint->pagemap_entry_count = tokens[++i].size - 1; i+=4;
-				checkpoint->pagemap_entries = calloc(1, sizeof(struct criu_pagemap_entry) * checkpoint->pagemap_entry_count);
+				checkpoint->pagemap_entries = calloc(1, sizeof(struct trusted_cr_pagemap_entry) * checkpoint->pagemap_entry_count);
 				if(checkpoint->pagemap_entries == NULL) {
 					DMSG("Unable to allocate checkpoint->pagemap_entries: Out of memory");
 					return false;
@@ -198,9 +198,9 @@ static bool parse_checkpoint_pagemap(struct criu_checkpoint * checkpoint, struct
 	return true;
 }
 
-static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
+static bool parse_checkpoint_core(struct trusted_cr_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
 	if(checkpoint == NULL) {
-		DMSG("Error: criu_checkpoint struct is NULL");
+		DMSG("Error: trusted_cr_checkpoint struct is NULL");
 		return false;
 	}
 
@@ -222,7 +222,7 @@ static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, struct ch
 
 	// Invalid file.
 	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
-		DMSG("CRIU: INVALID JSON\n");
+		DMSG("TRUSTED_CR: INVALID JSON\n");
 		return false;
 	}
 
@@ -272,9 +272,9 @@ static bool parse_checkpoint_core(struct criu_checkpoint * checkpoint, struct ch
 	return true;
 }
 
-static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
+static bool parse_checkpoint_mm(struct trusted_cr_checkpoint * checkpoint, struct checkpoint_file_data * checkpoint_files) {
 	if(checkpoint == NULL) {
-		DMSG("Error: criu_checkpoint struct is NULL");
+		DMSG("Error: trusted_cr_checkpoint struct is NULL");
 		return false;
 	}
 
@@ -296,7 +296,7 @@ static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, struct chec
 
 	// Invalid file.
 	if (items < 1 || tokens[0].type != JSMN_OBJECT) {
-		DMSG("CRIU: INVALID JSON\n");
+		DMSG("TRUSTED_CR: INVALID JSON\n");
 		return false;
 	}
 
@@ -307,7 +307,7 @@ static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, struct chec
 			if(tokens[i+1].type == JSMN_ARRAY) {
 				// Allocate the required number of VMA area structs
 				checkpoint->vm_area_count = tokens[++i].size; i++;
-				checkpoint->vm_areas = calloc(1, sizeof(struct criu_vm_area) * checkpoint->vm_area_count);
+				checkpoint->vm_areas = calloc(1, sizeof(struct trusted_cr_vm_area) * checkpoint->vm_area_count);
 
 				for(int y = 0; y < checkpoint->vm_area_count; y++, i += (tokens[i].size * 2) + 1) {
 					// Set the VMA addresses, offset and initialize the other fields.
@@ -339,4 +339,4 @@ static bool parse_checkpoint_mm(struct criu_checkpoint * checkpoint, struct chec
 	return true;
 }
 
-#endif /*__CRIU_CHECKPOINT_PARSER_H*/
+#endif /*__TRUSTED_CR_CHECKPOINT_PARSER_H*/

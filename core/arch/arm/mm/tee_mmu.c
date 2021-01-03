@@ -304,11 +304,11 @@ static TEE_Result umap_add_region(struct vm_info *vmi, struct vm_region *reg,
 	return TEE_ERROR_ACCESS_CONFLICT;
 }
 
-TEE_Result criu_vm_map_pad(struct user_mode_ctx *uctx, vaddr_t *va, size_t len,
+TEE_Result trusted_cr_vm_map_pad(struct user_mode_ctx *uctx, vaddr_t *va, size_t len,
 		      uint32_t prot, uint32_t flags, struct mobj *mobj,
 		      size_t offs, size_t pad_begin, size_t pad_end)
 {
-	// DMSG("criu_vm_map_pad: va: %p - len: %p", *va, len);
+	// DMSG("trusted_cr_vm_map_pad: va: %p - len: %p", *va, len);
 	TEE_Result res = TEE_SUCCESS;
 	struct vm_region *reg = NULL;
 	uint32_t attr = 0;
@@ -366,7 +366,7 @@ TEE_Result criu_vm_map_pad(struct user_mode_ctx *uctx, vaddr_t *va, size_t len,
 	 * the mapping.
 	 */
 	// if (thread_get_tsd()->ctx == &uctx->ctx)
-		// criu_tee_mmu_set_ctx(&uctx->ctx);
+		// trusted_cr_tee_mmu_set_ctx(&uctx->ctx);
 
 	*va = reg->va;
 
@@ -784,7 +784,7 @@ TEE_Result vm_get_flags(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
 	return TEE_SUCCESS;
 }
 
-TEE_Result criu_vm_set_prot(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
+TEE_Result trusted_cr_vm_set_prot(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
 		       uint32_t prot)
 {
 	TEE_Result res = TEE_SUCCESS;
@@ -817,7 +817,7 @@ TEE_Result criu_vm_set_prot(struct user_mode_ctx *uctx, vaddr_t va, size_t len,
 
 	if (need_sync) {
 		/* Synchronize changes to translation tables */
-		criu_tee_mmu_set_ctx(&uctx->ctx);
+		trusted_cr_tee_mmu_set_ctx(&uctx->ctx);
 	}
 
 	for (r = r0; r; r = TAILQ_NEXT(r, link)) {
@@ -1443,7 +1443,7 @@ TEE_Result tee_mmu_check_access_rights(const struct user_mode_ctx *uctx,
 	return TEE_SUCCESS;
 }
 
-void criu_tee_mmu_clear_ctx(struct tee_ta_ctx *ctx)
+void trusted_cr_tee_mmu_clear_ctx(struct tee_ta_ctx *ctx)
 {
 	struct thread_specific_data *tsd = thread_get_tsd();
 	pgt_free(&tsd->pgt_cache, is_user_ta_ctx(tsd->ctx));
@@ -1457,7 +1457,7 @@ void criu_tee_mmu_clear_ctx(struct tee_ta_ctx *ctx)
 	tsd->ctx = NULL;
 }
 
-void criu_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
+void trusted_cr_tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 {
 	struct thread_specific_data *tsd = thread_get_tsd();
 

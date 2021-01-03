@@ -193,7 +193,7 @@
 #define NUM_L1_TABLES	1
 #endif
 
-#define MAX_CRIU_L2_TABLES 8
+#define MAX_TRUSTED_CR_L2_TABLES 8
 
 typedef uint64_t l1_xlat_tbls_t[CFG_TEE_CORE_NB_CORE][NUM_L1_ENTRIES];
 typedef uint64_t xlat_tbl_t[XLAT_TABLE_ENTRIES];
@@ -210,8 +210,8 @@ static xlat_tbl_t xlat_tables[MAX_XLAT_TABLES]
 static xlat_tbl_t xlat_tables_ul1[CFG_NUM_THREADS]
 	__aligned(XLAT_TABLE_SIZE) __section(".nozi.mmu.l2");
 
-/* MMU L2 table for restoring CRIU checkpoints */
-static xlat_tbl_t xlat_tables_criu[MAX_CRIU_L2_TABLES]
+/* MMU L2 table for restoring TRUSTED_CR checkpoints */
+static xlat_tbl_t xlat_tables_trusted_cr[MAX_TRUSTED_CR_L2_TABLES]
 	__aligned(XLAT_TABLE_SIZE) __section(".nozi.mmu.l2");
 
 static int user_va_idx __nex_data = -1;
@@ -220,7 +220,7 @@ struct mmu_partition {
 	l1_xlat_tbls_t *l1_tables;
 	xlat_tbl_t *xlat_tables;
 	xlat_tbl_t *l2_ta_tables;
-	xlat_tbl_t *criu_l2_tables;
+	xlat_tbl_t *trusted_cr_l2_tables;
 	unsigned int xlat_tables_used;
 	unsigned int asid;
 };
@@ -229,7 +229,7 @@ static struct mmu_partition default_partition __nex_data = {
 	.l1_tables = l1_xlation_table,
 	.xlat_tables = xlat_tables,
 	.l2_ta_tables = xlat_tables_ul1,
-	.criu_l2_tables = xlat_tables_criu,
+	.trusted_cr_l2_tables = xlat_tables_trusted_cr,
 	.xlat_tables_used = 0,
 	.asid = 0
 };
@@ -636,9 +636,9 @@ void core_mmu_set_info_table(struct core_mmu_table_info *tbl_info,
 
 void * get_l2_table(int idx) {
 	assert(idx >= 0);
-	assert(idx < MAX_CRIU_L2_TABLES);
+	assert(idx < MAX_TRUSTED_CR_L2_TABLES);
 	
-	return get_prtn()->criu_l2_tables[idx];
+	return get_prtn()->trusted_cr_l2_tables[idx];
 }
 
 void core_mmu_get_user_pgdir(struct core_mmu_table_info *pgd_info)
@@ -998,7 +998,7 @@ void core_mmu_clear_map(struct core_mmu_map *map) {
 		TAILQ_FOREACH_REVERSE(l1_entry, &map->l1_entries, core_mmu_map_l1_entries, link) {
 			prtn->l1_tables[0][get_core_pos()][l1_entry->idx] = 0;
 			dsb();
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 			DMSG("prtn->l1_tables[0][%d][%d] = 0", get_core_pos(), l1_entry->idx);
 #endif
 			TAILQ_REMOVE(&map->l1_entries, l1_entry, link);
@@ -1036,7 +1036,7 @@ void core_mmu_set_map(struct core_mmu_map *map) {
 		TAILQ_FOREACH(l1_entry, &map->l1_entries, link) {
 			prtn->l1_tables[0][get_core_pos()][l1_entry->idx] =
 				l1_entry->table;
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 			DMSG("prtn->l1_tables[0][%d][%d] = %p", get_core_pos(), l1_entry->idx, l1_entry->table);
 #endif
 		}

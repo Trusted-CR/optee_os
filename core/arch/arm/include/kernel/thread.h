@@ -458,7 +458,7 @@ uint32_t thread_enter_user_mode(unsigned long a0, unsigned long a1,
 		unsigned long entry_func, bool is_32bit,
 		uint32_t *exit_status0, uint32_t *exit_status1);
 
-uint32_t criu_thread_enter_user_mode(uint32_t pstate, unsigned long entry_func, 
+uint32_t trusted_cr_thread_enter_user_mode(uint32_t pstate, unsigned long entry_func, 
 		unsigned long user_sp, uint64_t * regs, uint32_t *exit_status0, 
 		uint32_t *exit_status1);
 

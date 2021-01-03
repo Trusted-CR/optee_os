@@ -383,7 +383,7 @@ static void handle_user_ta_vfp(void)
 
 	struct user_mode_ctx * uctx = to_user_mode_ctx(s->ctx);
 	
-	if(uctx->is_criu_checkpoint) {
+	if(uctx->is_trusted_cr_checkpoint) {
 		uctx->checkpoint->regs.fp_used = true;
 	}
 	user_vfp_enabled = true;
@@ -472,7 +472,7 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 
 	if (thread_is_from_abort_mode()) {
 		struct thread_specific_data *tsd = thread_get_tsd();
-		if(!(is_user_ta_ctx(tsd->ctx) && to_user_ta_ctx(tsd->ctx)->uctx.is_criu_checkpoint)) {
+		if(!(is_user_ta_ctx(tsd->ctx) && to_user_ta_ctx(tsd->ctx)->uctx.is_trusted_cr_checkpoint)) {
 			abort_print_error(ai);
 			panic("[abort] abort in abort handler (trap CPU)");
 		}
@@ -481,8 +481,8 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 	if (ai->abort_type == ABORT_TYPE_UNDEF) {
 		if (abort_is_user_exception(ai)) {
 			struct thread_specific_data *tsd = thread_get_tsd();
-			if(is_user_ta_ctx(tsd->ctx) && to_user_ta_ctx(tsd->ctx)->uctx.is_criu_checkpoint) {
-				to_user_ta_ctx(tsd->ctx)->uctx.checkpoint->result = CRIU_UNDEFINED_ABORT;
+			if(is_user_ta_ctx(tsd->ctx) && to_user_ta_ctx(tsd->ctx)->uctx.is_trusted_cr_checkpoint) {
+				to_user_ta_ctx(tsd->ctx)->uctx.checkpoint->result = TRUSTED_CR_UNDEFINED_ABORT;
 			}
 			return FAULT_TYPE_USER_TA_PANIC;
 		}
@@ -536,8 +536,8 @@ void checkpoint_back(struct thread_abort_regs *regs, uint32_t pc) {
 	if(is_user_ta_ctx(tsd->ctx)) {
 		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
 
-		if(ctx->uctx.is_criu_checkpoint) {
-			struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
+		if(ctx->uctx.is_trusted_cr_checkpoint) {
+			struct trusted_cr_checkpoint * checkpoint = ctx->uctx.checkpoint;
 
 			// Checkpoint all registers
 			uint64_t * abort_regs = &regs->x0;
@@ -649,7 +649,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 			if(is_user_mode_ctx(ctx)) {
 				struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
-				if(uctx->is_criu_checkpoint && uctx->checkpoint->result == CRIU_OUT_OF_MEMORY) {
+				if(uctx->is_trusted_cr_checkpoint && uctx->checkpoint->result == TRUSTED_CR_OUT_OF_MEMORY) {
 					checkpoint_back(regs, ai.pc);
 					save_abort_info_in_tsd(&ai);
 					vfp_disable();

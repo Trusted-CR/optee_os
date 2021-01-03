@@ -1,12 +1,12 @@
-#ifndef __CRIU_CHECKPOINT_H
-#define __CRIU_CHECKPOINT_H
+#ifndef __TRUSTED_CR_CHECKPOINT_H
+#define __TRUSTED_CR_CHECKPOINT_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
 typedef uintptr_t vaddr_t;
 
-struct criu_vm_area {
+struct trusted_cr_vm_area {
 	vaddr_t vm_start;
 	vaddr_t vm_end;
 	void * original_data;
@@ -16,7 +16,7 @@ struct criu_vm_area {
 	bool dirty;
 };
 
-struct criu_pagemap_entry {
+struct trusted_cr_pagemap_entry {
 	vaddr_t vaddr_start;
 	unsigned long file_page_index;
 	unsigned long nr_pages;
@@ -24,22 +24,22 @@ struct criu_pagemap_entry {
 	void * buffer;
 };
 
-struct criu_dirty_page{
+struct trusted_cr_dirty_page{
 	vaddr_t vaddr_start;
-	TAILQ_ENTRY(criu_dirty_page) link;
+	TAILQ_ENTRY(trusted_cr_dirty_page) link;
 };
 
-struct criu_merged_page {
+struct trusted_cr_merged_page {
 	bool is_new;
-	struct criu_pagemap_entry entry;
-	TAILQ_ENTRY(criu_merged_pagemap) link;
+	struct trusted_cr_pagemap_entry entry;
+	TAILQ_ENTRY(trusted_cr_merged_pagemap) link;
 };
 
-TAILQ_HEAD(criu_merged_pagemap, criu_merged_page);
+TAILQ_HEAD(trusted_cr_merged_pagemap, trusted_cr_merged_page);
 
-TAILQ_HEAD(criu_dirty_pagemap, criu_dirty_page);
+TAILQ_HEAD(trusted_cr_dirty_pagemap, trusted_cr_dirty_page);
 
-struct criu_checkpoint_regs {
+struct trusted_cr_checkpoint_regs {
 	uint64_t vregs[64];
 	uint64_t regs[31];
 	uint64_t entry_addr;
@@ -51,46 +51,46 @@ struct criu_checkpoint_regs {
 	bool fp_used;
 };
 
-struct criu_checkpoint_dirty_pages {
+struct trusted_cr_checkpoint_dirty_pages {
 	uint32_t dirty_page_count;
 	uint32_t offset;
 };
 
-enum criu_return_types {
-	CRIU_IDLE,
-	CRIU_RUNNING,
-	CRIU_SYSCALL_WRITE		= 64,
-	CRIU_SYSCALL_EXIT		= 93,
-	CRIU_SYSCALL_EXIT_GROUP	= 94,
-	CRIU_SYSCALL_NANOSLEEP	= 115,
-	CRIU_SYSCALL_UNSUPPORTED,
-	CRIU_UNDEFINED_ABORT,
-	CRIU_OUT_OF_MEMORY,
-	CRIU_DATA_DIRTY_CHECKPOINT,
-	CRIU_SYSCALL_MIGRATE_BACK = 1000
+enum trusted_cr_return_types {
+	TRUSTED_CR_IDLE,
+	TRUSTED_CR_RUNNING,
+	TRUSTED_CR_SYSCALL_WRITE		= 64,
+	TRUSTED_CR_SYSCALL_EXIT		= 93,
+	TRUSTED_CR_SYSCALL_EXIT_GROUP	= 94,
+	TRUSTED_CR_SYSCALL_NANOSLEEP	= 115,
+	TRUSTED_CR_SYSCALL_UNSUPPORTED,
+	TRUSTED_CR_UNDEFINED_ABORT,
+	TRUSTED_CR_OUT_OF_MEMORY,
+	TRUSTED_CR_DATA_DIRTY_CHECKPOINT,
+	TRUSTED_CR_SYSCALL_MIGRATE_BACK = 1000
 };
 
-struct criu_checkpoint {
-	enum criu_return_types result;
+struct trusted_cr_checkpoint {
+	enum trusted_cr_return_types result;
 	// VMA's
-	struct criu_vm_area * vm_areas;
+	struct trusted_cr_vm_area * vm_areas;
 	uint32_t vm_area_count;
 	// Pagemap entries
-	struct criu_pagemap_entry * pagemap_entries;
+	struct trusted_cr_pagemap_entry * pagemap_entries;
 	uint32_t pagemap_entry_count;
 	// Dirty pages
-	struct criu_dirty_pagemap dirty_pagemap;
+	struct trusted_cr_dirty_pagemap dirty_pagemap;
 	// Registers
-	struct criu_checkpoint_regs regs;
+	struct trusted_cr_checkpoint_regs regs;
 	uint8_t l2_tables_index;
 };
 
-enum criu_status_bits {
+enum trusted_cr_status_bits {
 	VMA_AREA_REGULAR  = 1 << 0,
 	VMA_FILE_PRIVATE  = 1 << 1
 };
 
-enum criu_pte_flags {
+enum trusted_cr_pte_flags {
 	PE_PRESENT  = 1 << 0,
 	PE_LAZY     = 1 << 1
 };
@@ -116,14 +116,14 @@ struct checkpoint_file_data {
 	char * buffer;
 };
 
-struct criu_fd_info {
+struct trusted_cr_fd_info {
 	int id;
 	int fd;
 };
 
-struct criu_file {
+struct trusted_cr_file {
 	int id;
 	char * name;
 };
 
-#endif /*__CRIU_CHECKPOINT_H*/
+#endif /*__TRUSTED_CR_CHECKPOINT_H*/

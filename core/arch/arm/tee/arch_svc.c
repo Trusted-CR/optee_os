@@ -246,7 +246,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		return true; /* return to user mode */
 	}
 
-#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
+#ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 	DMSG("SVC catched: syscall number %d at PC: %p", scn, regs->elr);
 #endif
 	struct thread_specific_data *tsd = thread_get_tsd();
@@ -254,21 +254,21 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		struct user_ta_ctx * ctx = to_user_ta_ctx(tsd->ctx);
 
 		if(ctx->uctx.checkpoint != NULL) {
-			struct criu_checkpoint * checkpoint = ctx->uctx.checkpoint;
+			struct trusted_cr_checkpoint * checkpoint = ctx->uctx.checkpoint;
 			bool stop_execution = false;
 			static int max_number_of_prints = 10;
 			
-			if(scn == CRIU_SYSCALL_MIGRATE_BACK) {
+			if(scn == TRUSTED_CR_SYSCALL_MIGRATE_BACK) {
 				DMSG("Program asks to migrate back");
 				regs->x[1] = 0;
 				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_MIGRATE_BACK;
-			} else if(scn == CRIU_SYSCALL_EXIT || scn == CRIU_SYSCALL_EXIT_GROUP) {
+				checkpoint->result = TRUSTED_CR_SYSCALL_MIGRATE_BACK;
+			} else if(scn == TRUSTED_CR_SYSCALL_EXIT || scn == TRUSTED_CR_SYSCALL_EXIT_GROUP) {
 				DMSG("syscall sys_exit/sys_exit_group handled");
 				scn = 0;
 				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_EXIT;
-			} else if (scn == CRIU_SYSCALL_WRITE) {
+				checkpoint->result = TRUSTED_CR_SYSCALL_EXIT;
+			} else if (scn == TRUSTED_CR_SYSCALL_WRITE) {
 				int num_of_bytes = regs->x[2];
 				char temp_string[num_of_bytes+1];
 				int fd = regs->x[0];
@@ -281,7 +281,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 
 					// if(max_number_of_prints-- <= 0) {
 						// stop_execution = true;
-						// checkpoint->result = CRIU_SYSCALL_MIGRATE_BACK;
+						// checkpoint->result = TRUSTED_CR_SYSCALL_MIGRATE_BACK;
 					// } else {
 						return true;
 					// }
@@ -289,7 +289,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 					DMSG("Will need to handle file write to fd: %d", fd);
 					stop_execution = true;
 				}
-			} else if(scn == CRIU_SYSCALL_NANOSLEEP) {
+			} else if(scn == TRUSTED_CR_SYSCALL_NANOSLEEP) {
 				uint64_t * s = regs->x[2];
 				DMSG("syscall clock_nanosleep handled: %llu seconds", *s);
 				mdelay(*s * 1000);
@@ -298,11 +298,11 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			} else {
 				DMSG("Unknown system call: %d - let's checkpoint back", scn);
 				stop_execution = true;
-				checkpoint->result = CRIU_SYSCALL_UNSUPPORTED;
+				checkpoint->result = TRUSTED_CR_SYSCALL_UNSUPPORTED;
 			}
 
 			if(stop_execution) {
-#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
+#ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 				DMSG("Time to stop execution");
 #endif
 				// Reset

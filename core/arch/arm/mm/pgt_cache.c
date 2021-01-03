@@ -462,7 +462,7 @@ void pgt_alloc_regions(struct pgt_cache *pgt_cache, struct vm_info *vm_info, voi
 		while (n < num_tbls) {
 			vaddr_t addr = base + n * CORE_MMU_PGDIR_SIZE;
 			if(!find_pgt(SLIST_FIRST(pgt_cache), addr)) {
-#ifndef CFG_DISABLE_PRINTS_FOR_CRIU
+#ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 				DMSG("Allocating page table: %p - %p", addr, addr + CORE_MMU_PGDIR_SIZE);
 #endif
 				p = pop_from_some_list(addr, ctx);

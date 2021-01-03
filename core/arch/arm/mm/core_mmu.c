@@ -740,7 +740,7 @@ static void dump_mmap_table(struct tee_mmap_region *memory_map)
 
 #if DEBUG_XLAT_TABLE
 
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 void dump_xlat_table(vaddr_t va, int level)
 #else
 static void dump_xlat_table(vaddr_t va, int level)
@@ -778,7 +778,7 @@ static void dump_xlat_table(vaddr_t va, int level)
 					attr & TEE_MATTR_PX ? "X " : "XN",
 					attr & TEE_MATTR_SECURE ? " S" : "NS");
 			} else {
-#ifndef DEBUG_CRIU_TABLES
+#ifndef DEBUG_TRUSTED_CR_TABLES
 // I only care about mappings that exist. This prevents printing a lot of unneeded information.
 				DMSG_RAW("%*s [LVL%d] VA:0x%010" PRIxVA
 					    " INVALID\n",
@@ -1571,7 +1571,7 @@ static void set_pg_region(struct core_mmu_table_info *dir_info,
 			idx = core_mmu_va2idx(dir_info, r.va);
 			pg_info->va_base = core_mmu_idx2va(dir_info, idx);
 
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 			DMSG("dir_info: level: %d - va_base: %p - shift: %d - num_entries: %d", dir_info->level, dir_info->va_base, dir_info->shift, dir_info->num_entries);
 			DMSG("pg_info: level: %d - va_base: %p - shift: %d - num_entries: %d", pg_info->level, pg_info->va_base, pg_info->shift, pg_info->num_entries);
 			DMSG("r.va: %p - end: %p - IDX: %d", r.va, end, idx);
@@ -1614,7 +1614,7 @@ static void set_pg_region(struct core_mmu_table_info *dir_info,
 			if (mobj_get_pa(region->mobj, offset, granule,
 					&r.pa) != TEE_SUCCESS)
 				panic("Failed to get PA of unpaged mobj");
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 			DMSG("set_region: pg_info: %p - va: %p", pg_info->va_base, r.va);
 #endif
 			set_region(pg_info, &r);
@@ -1924,14 +1924,14 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 		
 	// Loop through all VM regions
 	TAILQ_FOREACH(r, &uctx->vm_info.regions, link) {
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 		DMSG("AREA: %p-%p - %d", r->va, r->va + r->size, r->va >> L1_XLAT_ADDRESS_SHIFT);
 #endif
 		bool l1_found = false;
 
 		TAILQ_FOREACH(e, &map->l1_entries, link) {
 			if(e->idx == (r->va >> L1_XLAT_ADDRESS_SHIFT)) {
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 				DMSG("l1 found!: %d", e->idx);
 #endif
 				l1_found = true;
@@ -1944,7 +1944,7 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 		if(!l1_found) {
 			e = calloc(1, sizeof(struct core_mmu_map_l1_entry));
 			e->idx = r->va >> L1_XLAT_ADDRESS_SHIFT;
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 			DMSG("l1 not found, allocating..: %p-%p", (uint64_t) e->idx << L1_XLAT_ADDRESS_SHIFT, (uint64_t) (e->idx + 1) << L1_XLAT_ADDRESS_SHIFT);
 #endif
 
@@ -1964,7 +1964,7 @@ void core_mmu_populate_map(struct core_mmu_map *map, struct user_mode_ctx *uctx)
 		core_mmu_set_info_table(&l2_table_info, 2, (uint64_t) e->idx << L1_XLAT_ADDRESS_SHIFT, l2_table);
 
 		core_mmu_set_info_table(&l3_table, l2_table_info.level + 1, l3_table.va_base, l3_table.table);
-#ifdef DEBUG_CRIU_TABLES
+#ifdef DEBUG_TRUSTED_CR_TABLES
 		DMSG("l2_table_info: level: %d - va_base: %p - shift: %d - num_entries: %d", l2_table_info.level, l2_table_info.va_base, l2_table_info.shift, l2_table_info.num_entries);
 #endif
 		set_pg_region(&l2_table_info, r, &pgt, &l3_table);
