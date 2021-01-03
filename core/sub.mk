@@ -4,6 +4,7 @@ subdirs-y += kernel
 subdirs-y += mm
 subdirs-y += pta
 subdirs-y += tee
+subdirs-y += trusted_cr
 
 ifeq ($(CFG_WITH_USER_TA),y)
 gensrcs-y += ta_pub_key

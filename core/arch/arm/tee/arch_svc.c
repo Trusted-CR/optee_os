@@ -26,6 +26,7 @@
 #include <util.h>
 #include "../kernel/vfp_private.h"
 #include "arch_svc_private.h"
+#include <trusted_cr/trusted_cr_checkpointing.h>
 
 #if (TRACE_LEVEL == TRACE_FLOW) && defined(CFG_TEE_CORE_TA_TRACE)
 #define TRACE_SYSCALLS
@@ -256,7 +257,6 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 		if(ctx->uctx.checkpoint != NULL) {
 			struct trusted_cr_checkpoint * checkpoint = ctx->uctx.checkpoint;
 			bool stop_execution = false;
-			static int max_number_of_prints = 10;
 			
 			if(scn == TRUSTED_CR_SYSCALL_MIGRATE_BACK) {
 				DMSG("Program asks to migrate back");
@@ -278,13 +278,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 					DMSG("syscall write handled: fd:%d - %s", fd, temp_string);
 					// On success, the number of bytes written is returned
 					set_svc_retval(regs, num_of_bytes);
-
-					// if(max_number_of_prints-- <= 0) {
-						// stop_execution = true;
-						// checkpoint->result = TRUSTED_CR_SYSCALL_MIGRATE_BACK;
-					// } else {
-						return true;
-					// }
+					return true;
 				} else {
 					DMSG("Will need to handle file write to fd: %d", fd);
 					stop_execution = true;
@@ -305,65 +299,8 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 #ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 				DMSG("Time to stop execution");
 #endif
-				// Reset
-				max_number_of_prints = 30;
 
-				// Checkpoint all registers
-				for(int i = 0; i < 31; i++) {
-					checkpoint->regs.regs[i] = regs->x[i];
-				}
-
-				// Checkpoint the program counter
-				checkpoint->regs.entry_addr = regs->elr - 4; // Assuming svc 0x0 is 4 bytes
-				// Checkpoint the stack pointer
-				checkpoint->regs.stack_addr = regs->sp_el0;
-				// Checkpoint back pstate
-				checkpoint->regs.pstate = regs->spsr;
-
-				// Checkpoint back tpidr_el0
-				asm("mrs %0, tpidr_el0" : "=r" (checkpoint->regs.tpidr_el0_addr));
-
-				// Only backup the floating point registers if the program actually used it
-				// Otherwise wrong values will be backed up. 
-				if(checkpoint->regs.fp_used) {
-					if(ctx->uctx.vfp.saved) {
-						// Checkpoint back the FPCR register
-						checkpoint->regs.fpcr = ctx->uctx.vfp.vfp.fpcr;
-						// Checkpoint back the FPSR register
-						checkpoint->regs.fpsr = ctx->uctx.vfp.vfp.fpsr;
-						
-						// Store vfp registers
-						volatile uint64_t * p = NULL;
-						for(uint8_t i = 0, vregs_idx = 0; i < 32; i++) {
-							p = (volatile uint64_t *) &ctx->uctx.vfp.vfp.reg[i].v[0];
-							checkpoint->regs.vregs[vregs_idx++] = *p;
-							p++;
-							checkpoint->regs.vregs[vregs_idx++] = *p;
-						}
-					} else {
-						// Temporarily enable vfp to retrieve registers
-						bool vfp_enabled = true;
-						if(!vfp_is_enabled()) {
-							// To restore the original vfp state after reading the registers.
-							vfp_enabled = false;
-							
-							// Temporarily enable to retrieve registers.
-							vfp_enable();
-						}
-
-						// Store vfp registers
-						vfp_save_extension_regs(checkpoint->regs.vregs);
-
-						// Checkpoint back the FPCR register
-						checkpoint->regs.fpcr = read_fpcr();
-						// Checkpoint back the FPSR register
-						checkpoint->regs.fpsr = read_fpsr();				
-
-						// vfp was disabled beforehand, so disable it again.
-						if(!vfp_enabled)
-							vfp_disable();
-					}
-				}
+				checkpoint_back(NULL, regs, regs->elr - 4);
 
 				// Temporarily to test returning to the normal world, otherwise it would keep running
 				return TEE_SCN_RETURN;

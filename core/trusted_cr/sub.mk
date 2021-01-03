@@ -1,0 +1,1 @@
+srcs-y += trusted_cr_checkpointing.c
