@@ -20,127 +20,26 @@
 		{ 0xd96a5b40, 0xe2c7, 0xb1af, \
 			{ 0x87, 0x94, 0x10, 0x02, 0xa5, 0xd5, 0xc6, 0x1d } }
 
-#define TRUSTED_CR_LOAD_CHECKPOINT	0
-#define TRUSTED_CR_CHECKPOINT_BACK	1
+#define TRUSTED_CR_EXECUTE_CHECKPOINT	0
+#define TRUSTED_CR_CHECKPOINT_BACK		1
 #define TRUSTED_CR_CONTINUE_EXECUTION	2
 
 static struct trusted_cr_checkpoint * checkpoint = NULL;
 static struct tee_ta_session *s = NULL; 
 static struct user_ta_ctx * utc = NULL;
 
-static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
-	TEE_Result res;
-	struct user_ta_ctx *utc = NULL;
+// Declare functions
+static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid);
+static void free_utc(struct user_ta_ctx ** u);
+static void free_checkpoint(struct trusted_cr_checkpoint ** check);
+static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * state);
+static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigned long user_sp, uint64_t tpidr_el0_addr, uint64_t * regs);
 
-	/* Register context */
-	utc = calloc(1, sizeof(struct user_ta_ctx));
-	if (!utc) {
-		DMSG("TRUSTED_CR: ERROR OUT OF MEMORY");
-		return NULL;
-	}
-
-	utc->uctx.ctx.initializing = true;
-	utc->uctx.is_trusted_cr_checkpoint = true;
-	utc->is_initializing = true;
-	TAILQ_INIT(&utc->open_sessions);
-	TAILQ_INIT(&utc->cryp_states);
-	TAILQ_INIT(&utc->objects);
-	TAILQ_INIT(&utc->storage_enums);
-
-	/*
-	 * Set context TA operation structure. It is required by generic
-	 * implementation to identify userland TA versus pseudo TA contexts.
-	 */
-	trusted_cr_set_ta_ctx_ops(&utc->uctx.ctx);
-
-	utc->uctx.ctx.uuid = *uuid;
-	res = vm_info_init(&utc->uctx);
-	if (res) {
-		DMSG("TRUSTED_CR: vm_info_init failed: %d", res);
-		return NULL;
-	}
-
-	return utc;
-}
-
-static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigned long user_sp, uint64_t tpidr_el0_addr, uint64_t * regs) {
-	uint32_t exit_status0 = 0;
-	uint32_t exit_status1 = 0;
-
-	// Restore the tpidr_el0 register
-	asm("msr tpidr_el0, %0" : : "r" (tpidr_el0_addr));
-	trusted_cr_thread_enter_user_mode(pstate, entry_func, user_sp, regs, &exit_status0, &exit_status1);
-}
-
-static void free_utc(struct user_ta_ctx ** u) {
-	struct user_ta_ctx * utc = *u;
-	core_mmu_clear_map(&utc->uctx.map);
-	struct core_mmu_map_l1_entry * e = NULL;
-	if(!TAILQ_EMPTY(&utc->uctx.map.l1_entries)) {
-		TAILQ_FOREACH_REVERSE(e, &utc->uctx.map.l1_entries, core_mmu_map_l1_entries, link) {
-			TAILQ_REMOVE(&utc->uctx.map.l1_entries, e, link);
-			free(e);
-		}
-	}
-
-	condvar_destroy(&utc->uctx.ctx.busy_cv);
-	pgt_flush_ctx(&utc->uctx.ctx);
-	TAILQ_REMOVE(&tee_ctxes, &utc->uctx.ctx, link);
-	trusted_cr_free_utc(utc);
-
-	*u = NULL;
-}
-
-static TEE_Result map_vm_area(struct user_ta_ctx * utc, struct trusted_cr_vm_area * area) {
-	if(area == NULL)
-		return TEE_ERROR_BAD_PARAMETERS;
-#ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
-	DMSG("\n\nTRUSTED_CR - ALLOC: %p - %p", (void *) area->vm_start, area->vm_end);
-#endif
-	return trusted_cr_alloc_and_map_ldelf_fobj(utc, area->vm_end - area->vm_start,
-				       area->protection,
-				       &area->vm_start);
-}
-
-static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * state) {
-	volatile uint64_t * p = NULL;
-	for(uint8_t i = 0, vregs_idx = 0; i < 32; i++) {
-		p = (volatile uint64_t *) &state->vfp.reg[i].v[0];
-		*p = vregs[vregs_idx++];
-		p++;
-		*p = vregs[vregs_idx++];
-	}
-}
-
-static void free_checkpoint(struct trusted_cr_checkpoint ** check) {
-	struct trusted_cr_dirty_page * entry = NULL;
-	struct trusted_cr_checkpoint * c = *check;
-
-	if(!TAILQ_EMPTY(&c->dirty_pagemap)) {
-		TAILQ_FOREACH_REVERSE(entry, &c->dirty_pagemap, trusted_cr_dirty_pagemap, link) {
-			TAILQ_REMOVE(&c->dirty_pagemap, entry, link);
-			free(entry);
-		}
-	}
-
-	// Free all allocated trusted_cr_vm_area structs
-	if(c->vm_areas != NULL)
-		free(c->vm_areas);
-
-	if(c->pagemap_entries != NULL) {
-		free(c->pagemap_entries);
-	}
-
-	free(c);
-
-	//Reset the original pointer to NULL.
-	*check = NULL;
-}
-
-static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binaryDataInformation) {
+static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE_Param * binary_data_buffer) {
 	TEE_Result res;
 	TEE_UUID uuid = TRUSTED_CR_CHECKPOINT_UUID;
 
+	// ----------  Initialize session / context / checkpoint variables ------------ //
 	if(s != NULL) {
 		free(s);
 		s = NULL;
@@ -150,26 +49,25 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	if (!s)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
+	if(checkpoint != NULL)
+		free_checkpoint(&checkpoint);
+	
+	checkpoint = calloc(1, sizeof(struct trusted_cr_checkpoint));	
+	int checkpoint_data_index = 0;
+
 	s->cancel_mask = true;
 	condvar_init(&s->refc_cv);
 	condvar_init(&s->lock_cv);
 	s->lock_thread = THREAD_ID_INVALID;
 	s->ref_count = 1;
 
-	struct checkpoint_file * checkpoint_file_var = binaryDataInformation->memref.buffer;
-	
-	if(checkpoint != NULL)
-		free_checkpoint(&checkpoint);
-	
-	checkpoint = calloc(1, sizeof(struct trusted_cr_checkpoint));	
-
-	int size = 0;
-	int binaryData_index = 0;
+	// The executable data and pages data is stored in the 2nd shared buffer
+	struct checkpoint_file * binary_data = binary_data_buffer->memref.buffer;
 
 	// Copy the checkpoint struct with the registers
-	size = sizeof(struct trusted_cr_checkpoint);
-	memcpy(checkpoint, binaryData->memref.buffer + binaryData_index, size);
-	binaryData_index += size;
+	int size = sizeof(struct trusted_cr_checkpoint);
+	memcpy(checkpoint, checkpoint_data->memref.buffer + checkpoint_data_index, size);
+	checkpoint_data_index += size;
 
 	checkpoint->l2_tables_index = 0;
 	checkpoint->regs.fp_used = false;
@@ -178,14 +76,14 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	// Copy over the vm areas
 	size = checkpoint->vm_area_count * sizeof(struct trusted_cr_vm_area);
 	checkpoint->vm_areas = calloc(1, size);
-	memcpy(checkpoint->vm_areas, binaryData->memref.buffer + binaryData_index, size);
-	binaryData_index += size;
+	memcpy(checkpoint->vm_areas, checkpoint_data->memref.buffer + checkpoint_data_index, size);
+	checkpoint_data_index += size;
 
 	// Copy over the pagemap entries
 	size = checkpoint->pagemap_entry_count * sizeof(struct trusted_cr_pagemap_entry);
 	checkpoint->pagemap_entries = calloc(1, size);
-	memcpy(checkpoint->pagemap_entries, binaryData->memref.buffer + binaryData_index, size);
-	binaryData_index += size;
+	memcpy(checkpoint->pagemap_entries, checkpoint_data->memref.buffer + checkpoint_data_index, size);
+	checkpoint_data_index += size;
 
 	// Create the user TA
 	if(utc != NULL) {
@@ -224,15 +122,15 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 	struct trusted_cr_vm_area * area = checkpoint->vm_areas;
 	for(int i = 0; i < checkpoint->vm_area_count; i++) {
 		if(area[i].status & VMA_FILE_PRIVATE) {
-			area[i].original_data = binaryDataInformation->memref.buffer 
-									+ checkpoint_file_var[EXECUTABLE_BINARY_FILE].buffer_index;
+			area[i].original_data = binary_data_buffer->memref.buffer 
+									+ binary_data[EXECUTABLE_BINARY_FILE].buffer_index;
 		}
 	}
 
 	uint32_t pages_file_index = 0;
 	for(int i = 0; i < checkpoint->pagemap_entry_count; i++) {
-		checkpoint->pagemap_entries[i].buffer = binaryDataInformation->memref.buffer 	// Data buffer
-				+ checkpoint_file_var[PAGES_BINARY_FILE].buffer_index   				// Plus offset of the pages file
+		checkpoint->pagemap_entries[i].buffer = binary_data_buffer->memref.buffer 	// Data buffer
+				+ binary_data[PAGES_BINARY_FILE].buffer_index   				// Plus offset of the pages file
 				+ SMALL_PAGE_SIZE * pages_file_index;
 		pages_file_index += checkpoint->pagemap_entries[i].nr_pages;
 	}
@@ -254,9 +152,9 @@ static TEE_Result load_checkpoint_data(TEE_Param * binaryData, TEE_Param * binar
 
 	// Copy the return value in the buffer.
 	long index = 0;
-	memcpy(binaryDataInformation->memref.buffer, &checkpoint->result, sizeof(enum trusted_cr_return_types)); 
+	memcpy(binary_data_buffer->memref.buffer, &checkpoint->result, sizeof(enum trusted_cr_return_types)); 
 	index += sizeof(enum trusted_cr_return_types);
-	memcpy(binaryDataInformation->memref.buffer + index, &checkpoint->regs, sizeof(struct trusted_cr_checkpoint_regs));
+	memcpy(binary_data_buffer->memref.buffer + index, &checkpoint->regs, sizeof(struct trusted_cr_checkpoint_regs));
 	index += sizeof(struct trusted_cr_checkpoint_regs);
 
 	tee_ta_pop_current_session();
@@ -316,7 +214,7 @@ static TEE_Result trusted_cr_checkpoint_back(uint32_t param_types,
 	return TEE_SUCCESS;
 }
 
-static TEE_Result trusted_cr_load_checkpoint(uint32_t param_types,
+static TEE_Result trusted_cr_execute_checkpoint_helper(uint32_t param_types,
 			     TEE_Param params[TEE_NUM_PARAMS]) {
 #ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 	DMSG("Load checkpoint");
@@ -332,17 +230,10 @@ static TEE_Result trusted_cr_load_checkpoint(uint32_t param_types,
 
 #ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
 	IMSG("Got data from NW, size: %d and %d", params[0].memref.size, params[1].memref.size);
-
-	// uint8_t files = params[1].memref.size / sizeof(struct checkpoint_file);
-	// DMSG("Second argument contains information about %d checkpoint files", files);
-	// if(files == CHECKPOINT_FILES)
-	// 	DMSG("Which matches to the expected number: %d/%d", files, CHECKPOINT_FILES);
-	// else
-	// 	DMSG("Unexpected number of checkpoint files: %d/%d", files, CHECKPOINT_FILES);
 #endif
 
-	// LOAD CHECKPOINT DATA
-	load_checkpoint_data(&params[0], &params[1]);
+	// Execute checkpoint
+	trusted_cr_execute_checkpoint(&params[0], &params[1]);
 
 	return TEE_SUCCESS;
 }
@@ -443,8 +334,8 @@ static TEE_Result invoke_command(void *psess __unused,
 				 TEE_Param params[TEE_NUM_PARAMS])
 {
 	switch (cmd) {
-	case TRUSTED_CR_LOAD_CHECKPOINT:
-		return trusted_cr_load_checkpoint(ptypes, params);
+	case TRUSTED_CR_EXECUTE_CHECKPOINT:
+		return trusted_cr_execute_checkpoint_helper(ptypes, params);
 	case TRUSTED_CR_CHECKPOINT_BACK:
 		return trusted_cr_checkpoint_back(ptypes, params);
 	case TRUSTED_CR_CONTINUE_EXECUTION:
@@ -490,3 +381,101 @@ pseudo_ta_register(.uuid = TRUSTED_CR_UUID, .name = TA_NAME,
 	.open_session_entry_point = open_session,
 	.close_session_entry_point = close_session,
 	.invoke_command_entry_point = invoke_command);
+
+static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid) {
+	TEE_Result res;
+	struct user_ta_ctx *utc = NULL;
+
+	/* Register context */
+	utc = calloc(1, sizeof(struct user_ta_ctx));
+	if (!utc) {
+		DMSG("TRUSTED_CR: ERROR OUT OF MEMORY");
+		return NULL;
+	}
+
+	utc->uctx.ctx.initializing = true;
+	utc->uctx.is_trusted_cr_checkpoint = true;
+	utc->is_initializing = true;
+	TAILQ_INIT(&utc->open_sessions);
+	TAILQ_INIT(&utc->cryp_states);
+	TAILQ_INIT(&utc->objects);
+	TAILQ_INIT(&utc->storage_enums);
+
+	/*
+	 * Set context TA operation structure. It is required by generic
+	 * implementation to identify userland TA versus pseudo TA contexts.
+	 */
+	trusted_cr_set_ta_ctx_ops(&utc->uctx.ctx);
+
+	utc->uctx.ctx.uuid = *uuid;
+	res = vm_info_init(&utc->uctx);
+	if (res) {
+		DMSG("TRUSTED_CR: vm_info_init failed: %d", res);
+		return NULL;
+	}
+
+	return utc;
+}
+
+static void free_utc(struct user_ta_ctx ** u) {
+	struct user_ta_ctx * utc = *u;
+	core_mmu_clear_map(&utc->uctx.map);
+	struct core_mmu_map_l1_entry * e = NULL;
+	if(!TAILQ_EMPTY(&utc->uctx.map.l1_entries)) {
+		TAILQ_FOREACH_REVERSE(e, &utc->uctx.map.l1_entries, core_mmu_map_l1_entries, link) {
+			TAILQ_REMOVE(&utc->uctx.map.l1_entries, e, link);
+			free(e);
+		}
+	}
+
+	condvar_destroy(&utc->uctx.ctx.busy_cv);
+	pgt_flush_ctx(&utc->uctx.ctx);
+	TAILQ_REMOVE(&tee_ctxes, &utc->uctx.ctx, link);
+	trusted_cr_free_utc(utc);
+
+	*u = NULL;
+}
+
+static void free_checkpoint(struct trusted_cr_checkpoint ** check) {
+	struct trusted_cr_dirty_page * entry = NULL;
+	struct trusted_cr_checkpoint * c = *check;
+
+	if(!TAILQ_EMPTY(&c->dirty_pagemap)) {
+		TAILQ_FOREACH_REVERSE(entry, &c->dirty_pagemap, trusted_cr_dirty_pagemap, link) {
+			TAILQ_REMOVE(&c->dirty_pagemap, entry, link);
+			free(entry);
+		}
+	}
+
+	// Free all allocated trusted_cr_vm_area structs
+	if(c->vm_areas != NULL)
+		free(c->vm_areas);
+
+	if(c->pagemap_entries != NULL) {
+		free(c->pagemap_entries);
+	}
+
+	free(c);
+
+	//Reset the original pointer to NULL.
+	*check = NULL;
+}
+
+static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigned long user_sp, uint64_t tpidr_el0_addr, uint64_t * regs) {
+	uint32_t exit_status0 = 0;
+	uint32_t exit_status1 = 0;
+
+	// Restore the tpidr_el0 register
+	asm("msr tpidr_el0, %0" : : "r" (tpidr_el0_addr));
+	trusted_cr_thread_enter_user_mode(pstate, entry_func, user_sp, regs, &exit_status0, &exit_status1);
+}
+
+static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * state) {
+	volatile uint64_t * p = NULL;
+	for(uint8_t i = 0, vregs_idx = 0; i < 32; i++) {
+		p = (volatile uint64_t *) &state->vfp.reg[i].v[0];
+		*p = vregs[vregs_idx++];
+		p++;
+		*p = vregs[vregs_idx++];
+	}
+}
