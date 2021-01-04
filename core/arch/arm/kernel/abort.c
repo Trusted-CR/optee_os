@@ -374,7 +374,7 @@ static void handle_user_ta_panic(struct abort_info *ai)
 	ai->regs->spsr = SPSR_64(SPSR_64_MODE_EL1, SPSR_64_MODE_SP_EL0, daif);
 }
 #endif /*ARM64*/
-bool user_vfp_enabled = false;
+static bool user_vfp_enabled = false;
 #ifdef CFG_WITH_VFP
 static void handle_user_ta_vfp(void)
 {
@@ -385,9 +385,11 @@ static void handle_user_ta_vfp(void)
 
 	struct user_mode_ctx * uctx = to_user_mode_ctx(s->ctx);
 	
-	if(uctx->is_trusted_cr_checkpoint) {
+	// When the checkpoint uses the vfp, backup the vfp 
+	// registers when migrating back.
+	if(uctx->is_trusted_cr_checkpoint)
 		uctx->checkpoint->regs.fp_used = true;
-	}
+
 	user_vfp_enabled = true;
 	thread_user_enable_vfp(&uctx->vfp);
 }
@@ -540,9 +542,6 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 
 	set_abort_info(abort_type, regs, &ai);
 
-	// This helps debugging for now
-	// DMSG("ABORT AT PC %p - VA %p", ai.pc, ai.va);
-
 	switch (get_fault_type(&ai)) {
 	case FAULT_TYPE_IGNORE:
 		break;
@@ -567,6 +566,7 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			panic("abort outside thread context");
 		}
 
+		// Backup the vfp registers when user vfp is enabled.
 		if(user_vfp_enabled) {
 			thread_user_save_vfp();
 			user_vfp_enabled = false;
@@ -576,6 +576,8 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 		handled = tee_pager_handle_fault(&ai);
 		thread_kernel_restore_vfp();
 
+		// When the pagefault is not handled it can be that we have ran out of memory
+		// and were unable to map the page.
 		if (!handled) {
 			struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 			if(is_user_mode_ctx(ctx)) {

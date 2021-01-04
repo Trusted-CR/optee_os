@@ -653,6 +653,45 @@ static bool trusted_cr_is_checkpoint_address(vaddr_t page_va) {
 	return false;
 }
 
+struct tee_pager_area * trusted_cr_map_area(vaddr_t va, TEE_Result * res) {
+	struct tee_pager_area * area = NULL;
+
+	*res = TEE_ERROR_ITEM_NOT_FOUND;
+	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
+	if(is_user_mode_ctx(ctx)) {
+		struct user_mode_ctx * uctx = to_user_mode_ctx(ctx);
+		if(uctx->is_trusted_cr_checkpoint) {
+			// First check if the va address is valid within the vm areas range
+			for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
+				if(va >= uctx->checkpoint->vm_areas[i].vm_start &&
+				   va  < uctx->checkpoint->vm_areas[i].vm_end) {
+					// DMSG("Pagefault %p happens within checkpoint VM entry! %p-%p", ai->va, uctx->checkpoint->vm_areas[i].vm_start, uctx->checkpoint->vm_areas[i].vm_end);
+					
+					vaddr_t page_va = va & ~SMALL_PAGE_MASK;
+					struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
+
+					// Map the page.
+					*res = trusted_cr_alloc_and_map_ldelf_fobj(utc, 1, uctx->checkpoint->vm_areas[i].protection, &page_va);
+					if(*res != TEE_SUCCESS) {
+						DMSG("Unable to map checkpointed page %p, error: %p", va, res);
+
+						if(*res == TEE_ERROR_OUT_OF_MEMORY) 
+							DMSG("Out of memory.");
+							
+						utc->uctx.checkpoint->result = TRUSTED_CR_OUT_OF_MEMORY;
+						break;
+					}
+				
+					area = find_area(uctx->areas, va);
+					break;
+				}
+			}
+		}
+	}
+
+	return area;
+}
+
 static bool trusted_cr_load_page(vaddr_t page_va, void * va_alias ) {
 	struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
 	if(is_user_mode_ctx(ctx)) {
@@ -667,8 +706,7 @@ static bool trusted_cr_load_page(vaddr_t page_va, void * va_alias ) {
 					for(int y = 0; y < uctx->checkpoint->pagemap_entry_count; y++) {
 						if(page_va >= uctx->checkpoint->pagemap_entries[y].vaddr_start &&
 						   page_va  < uctx->checkpoint->pagemap_entries[y].vaddr_start + uctx->checkpoint->pagemap_entries[y].nr_pages * SMALL_PAGE_SIZE) {
-							
-							// DMSG("\n\nMEMCPIED: %p", page_va);
+							// DMSG("\n\nMEMCPYING: %p", page_va);
 							memcpy(va_alias, uctx->checkpoint->pagemap_entries[y].buffer + (page_va - uctx->checkpoint->pagemap_entries[y].vaddr_start), SMALL_PAGE_SIZE);
 							
 							is_page_data = true;
@@ -678,12 +716,11 @@ static bool trusted_cr_load_page(vaddr_t page_va, void * va_alias ) {
 
 					if(!is_page_data) {
 						if((uctx->checkpoint->vm_areas[i].status & VMA_FILE_PRIVATE)) {
-							// DMSG("\n\nMEMCPIED: %p", page_va);
+							// DMSG("\n\nMEMCPYING: %p", page_va);
 							memcpy(va_alias, uctx->checkpoint->vm_areas[i].original_data + uctx->checkpoint->vm_areas[i].offset + (page_va - uctx->checkpoint->vm_areas[i].vm_start), SMALL_PAGE_SIZE);
-							// pmem->flags |= PMEM_FLAG_DIRTY;
 						} else {
-							// DMSG("\n\nInited to zero: %p", page_va);
 							// Initialize the page to zero.
+							// DMSG("\n\nINITING TO ZERO: %p", page_va);
 							memset(va_alias, 0, SMALL_PAGE_SIZE);
 						}
 					}
@@ -1436,6 +1473,7 @@ static void add_dirty_entry(vaddr_t dirty_address, struct user_mode_ctx * uctx) 
 		entry->vaddr_start = dirty_address;		
 		TAILQ_INSERT_TAIL(&uctx->checkpoint->dirty_pagemap, entry, link);
 	} else {
+		// Todo: change this to return to the normal world
 		DMSG("OUT OF MEMORY!!");
 		panic();
 	}
@@ -1636,57 +1674,12 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		}
 	}
 
-	bool copy_checkpoint_data = false;
-	bool copy_from_pagemap = false;
-	int vm_area_index = -1;
-	struct user_mode_ctx * uctx = NULL;
-	if(!area) {		
-		struct tee_ta_ctx *ctx = thread_get_tsd()->ctx;
-		if(is_user_mode_ctx(ctx)) {
-			uctx = to_user_mode_ctx(ctx);
-			if(uctx->is_trusted_cr_checkpoint) {
-				// First check if the va address is valid within the vm areas range
-				for(int i = 0; i < uctx->checkpoint->vm_area_count; i++) {
-					if(ai->va >= uctx->checkpoint->vm_areas[i].vm_start &&
-					   ai->va  < uctx->checkpoint->vm_areas[i].vm_end) {
-						// DMSG("Pagefault %p happens within checkpoint VM entry! %p-%p", ai->va, uctx->checkpoint->vm_areas[i].vm_start, uctx->checkpoint->vm_areas[i].vm_end);
-						
-						struct user_ta_ctx * utc = to_user_ta_ctx(ctx);
+	if(!area) {
+		TEE_Result res;
+		area = trusted_cr_map_area(ai->va, &res);
 
-						// First try to map only one single page.
-						TEE_Result res = trusted_cr_alloc_and_map_ldelf_fobj(utc, 1, uctx->checkpoint->vm_areas[i].protection, &page_va);
-						if(res != TEE_SUCCESS) {
-							if(res == TEE_ERROR_OUT_OF_MEMORY)
-								DMSG("Unable to map checkpointed page, out of memory.");
-							else
-								DMSG("Unable to map checkpointed page %p, error: %p", ai->va, res);
-								
-							utc->uctx.checkpoint->result = TRUSTED_CR_OUT_OF_MEMORY;
-							return false;
-						}
-					
-						area = find_area(uctx->areas, ai->va);
-						copy_checkpoint_data = true;
-						vm_area_index = i;
-						break;
-					}
-				}
-
-				// First check if the page is in the pagemap_entries
-				if(copy_checkpoint_data) {
-					for(int y = 0; y < uctx->checkpoint->pagemap_entry_count; y++) {
-						if(ai->va >= uctx->checkpoint->pagemap_entries[y].vaddr_start &&
-						   ai->va  < uctx->checkpoint->pagemap_entries[y].vaddr_start + uctx->checkpoint->pagemap_entries[y].nr_pages * SMALL_PAGE_SIZE) {
-							// DMSG("Additional checkpoint pagemap entry found! %p-%p", entry->entry.vaddr_start, entry->entry.vaddr_start+ entry->entry.nr_pages*SMALL_PAGE_SIZE);
-							
-							copy_checkpoint_data = true;
-							copy_from_pagemap = true;
-							break;
-						}
-					}
-				}
-			}
-		}
+		if(res != TEE_SUCCESS)
+			return false;
 	}
 
 
@@ -1700,10 +1693,6 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		goto out;
 	}
 
-	// uint32_t perm = get_area_mattr(area->flags);
-	// DMSG("area found, time to unhide");
-	// DMSG("area type: %p", area->type);
-	// DMSG("area perms: r: %p, w:%p, x:%p", perm & TEE_MATTR_PR, perm & TEE_MATTR_PW, perm & TEE_MATTR_PX);
 	if (!tee_pager_unhide_page(area, area_va2idx(area, page_va))) {
 		struct tee_pager_pmem *pmem = NULL;
 		uint32_t attr = 0;
@@ -1724,9 +1713,6 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 			goto out;
 		}
 
-		if(area->type == 2) {
-			// DMSG("Going to add a locked entry: npages: %d - pc %p\tva %p - area: %p - %p - type: %d", tee_pager_npages, ai->pc, ai->va, area->base, area->base + area->size, area->type);
-		}
 		pmem = tee_pager_get_page(area->type);
 		if (!pmem) {
 			abort_print(ai);
@@ -1745,41 +1731,6 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		attr = get_area_mattr(area->flags);
 
 		pa = get_pmem_pa(pmem);
-
-		//Perhaps the copy needs to happen over here.
-		// if(copy_checkpoint_data) {
-		// 	area_set_entry(area, tblidx, pa, attr | TEE_MATTR_PW);
-		// 	/*
-		// 		* No need to flush TLB for this entry, it was
-		// 		* invalid. We should use a barrier though, to make
-		// 		* sure that the change is visible.
-		// 		*/
-		// 	dsb_ishst();
-
-		// 	if(copy_checkpoint_data) {
-		// 		pager_unlock(exceptions);
-		// 		// DMSG("Time to memcpy the data");
-		// 		// Copy the page data.
-		// 		if (entry != NULL) {
-		// 			DMSG("\n\nMEMCPIED: %p", page_va);
-		// 			memcpy((void *)page_va, entry->buffer + (page_va - entry->entry.vaddr_start), SMALL_PAGE_SIZE);
-		// 			// pmem->flags |= PMEM_FLAG_DIRTY;
-		// 		} else if(vm_area_index != -1 && uctx != NULL) {
-		// 			// TODO: Data is not always coming from the binary file.. the data can be from other memory mapped files..
-		// 			if((uctx->checkpoint->vm_areas[vm_area_index].status & VMA_FILE_PRIVATE)) {
-		// 				DMSG("\n\nMEMCPIED: %p", page_va);
-		// 				memcpy((void *)page_va, uctx->checkpoint->vm_areas[vm_area_index].original_data + uctx->checkpoint->vm_areas[vm_area_index].offset + (page_va - uctx->checkpoint->vm_areas[vm_area_index].vm_start), SMALL_PAGE_SIZE);
-		// 				// pmem->flags |= PMEM_FLAG_DIRTY;
-		// 			} else {
-		// 				DMSG("\n\nInited to zero: %p", page_va);
-		// 				// Initialize the page to zero.
-		// 				memset((void *)page_va, 0, SMALL_PAGE_SIZE);
-		// 			}
-		// 		}
-				
-		// 		exceptions = pager_lock(ai);
-		// 	}
-		// }
 
 		/*
 		 * Pages from PAGER_AREA_TYPE_RW starts read-only to be
@@ -1839,9 +1790,7 @@ bool tee_pager_handle_fault(struct abort_info *ai)
 		}
 		pgt_inc_used_entries(area->pgt);
 
-		// DMSG("Mapped 0x%" PRIxVA " -> 0x%" PRIxPA" - rwxRWX:%d%d%d%d%d%d", page_va, pa, 
-		// 	(attr & TEE_MATTR_UR) > 0, (attr & TEE_MATTR_UW) > 0, (attr & TEE_MATTR_UX) > 0,
-		// 	(attr & TEE_MATTR_PR) > 0, (attr & TEE_MATTR_PW) > 0, (attr & TEE_MATTR_PX) > 0);
+		FMSG("Mapped 0x%" PRIxVA " -> 0x%" PRIxPA, page_va, pa);
 	}
 
 	tee_pager_hide_pages();
