@@ -39,7 +39,7 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	TEE_Result res;
 	TEE_UUID uuid = TRUSTED_CR_CHECKPOINT_UUID;
 
-	// ----------  Initialize session / context / checkpoint variables ------------ //
+	// Initialize session / context / checkpoint variables
 	if(s != NULL) {
 		free(s);
 		s = NULL;
@@ -98,8 +98,8 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 
 	utc->uctx.checkpoint = checkpoint;
 
+	// Copy over the vfp registers to the user TA struct.
 	set_vfp_registers(checkpoint->regs.vregs, &utc->uctx.vfp);
-
 	utc->uctx.vfp.vfp.fpsr = checkpoint->regs.fpsr;
 	utc->uctx.vfp.vfp.fpcr = checkpoint->regs.fpcr;
 	utc->uctx.vfp.lazy_saved = true;
@@ -107,7 +107,9 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	
 	tee_ta_push_current_session(s);
 
+	// Set the TA entry address to the checkpoint pc
 	utc->ldelf_stack_ptr = checkpoint->regs.stack_addr;
+	// Set the TA stack address to the checkpoint sp
 	utc->entry_func = checkpoint->regs.entry_addr;
 
 #ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
@@ -119,14 +121,16 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 #endif
 	trusted_cr_tee_mmu_set_ctx(&utc->uctx.ctx);
 
+	// Set the memory pointers to the correct locations
 	struct trusted_cr_vm_area * area = checkpoint->vm_areas;
 	for(int i = 0; i < checkpoint->vm_area_count; i++) {
 		if(area[i].status & VMA_FILE_PRIVATE) {
 			area[i].original_data = binary_data_buffer->memref.buffer 
-									+ binary_data[EXECUTABLE_BINARY_FILE].buffer_index;
+								  + binary_data[EXECUTABLE_BINARY_FILE].buffer_index;
 		}
 	}
 
+	// Set the memory pointers to the correct locations
 	uint32_t pages_file_index = 0;
 	for(int i = 0; i < checkpoint->pagemap_entry_count; i++) {
 		checkpoint->pagemap_entries[i].buffer = binary_data_buffer->memref.buffer 	// Data buffer
@@ -147,6 +151,10 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	DMSG("\n\nTRUSTED_CR - RUN! Entry address: %p", (void *) checkpoint->regs.entry_addr);
 #endif
 
+	// Jump into the checkpoint code without any page mapped.
+	// The pagefault will be catched in abort.c: abort_handler()
+	// which will call tee_pager.c: tee_pager_handle_fault() which will
+	// map the pages accordingly.
 	jump_to_user_mode(checkpoint->regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
 	thread_user_clear_vfp(&utc->uctx.vfp);
 
@@ -162,6 +170,7 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	return TEE_SUCCESS;
 }
 
+// Will be called by the normal world to migrate back
 static TEE_Result trusted_cr_checkpoint_back(uint32_t param_types,
 			     TEE_Param params[TEE_NUM_PARAMS]) {
 #ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR
@@ -175,40 +184,43 @@ static TEE_Result trusted_cr_checkpoint_back(uint32_t param_types,
 	if (param_types != exp_param_types)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	TEE_Param * binaryData = &params[1];
+	// We store everything in shared buffer 2 because that is the biggest one.
+	// The old data in shared buffer 2 is the executable + page data.
+	TEE_Param * shared_buffer_2 = &params[1];
 
 	tee_ta_push_current_session(s);
 
 	trusted_cr_tee_mmu_set_ctx(&utc->uctx.ctx);
 
+	// Copy over the checkpoint registers
 	long index = 0;
-	memcpy(binaryData->memref.buffer, &checkpoint->regs, sizeof(struct trusted_cr_checkpoint_regs));
+	memcpy(shared_buffer_2->memref.buffer, &checkpoint->regs, sizeof(struct trusted_cr_checkpoint_regs));
 	index += sizeof(struct trusted_cr_checkpoint_regs);
 
-	struct trusted_cr_checkpoint_dirty_pages * dirty_pages_info = binaryData->memref.buffer + index;
+	// To keep track of the number of dirty pages
+	struct trusted_cr_checkpoint_dirty_pages * dirty_pages_info = shared_buffer_2->memref.buffer + index;
 	index += sizeof(struct trusted_cr_checkpoint_dirty_pages);
-	
 	dirty_pages_info->dirty_page_count = 0;
 	
+	// Copy over which memory pages are dirty pages
 	struct trusted_cr_dirty_page * entry = NULL;
 	TAILQ_FOREACH(entry, &checkpoint->dirty_pagemap, link) {
 		// DMSG("GOT A DIRTY ENTRY HERE: %p", entry->vaddr_start);
-
 		dirty_pages_info->dirty_page_count++;
-		memcpy(binaryData->memref.buffer + index, entry, sizeof(struct trusted_cr_dirty_page));
+		memcpy(shared_buffer_2->memref.buffer + index, entry, sizeof(struct trusted_cr_dirty_page));
 		index += sizeof(struct trusted_cr_dirty_page);
 	}
 
+	// Now copy over all the dirty page data itself
 	dirty_pages_info->offset = index;
 	TAILQ_FOREACH(entry, &checkpoint->dirty_pagemap, link) {
-		memcpy(binaryData->memref.buffer + index, entry->vaddr_start, SMALL_PAGE_SIZE);
+		memcpy(shared_buffer_2->memref.buffer + index, entry->vaddr_start, SMALL_PAGE_SIZE);
 		index += SMALL_PAGE_SIZE;
 	}
 
+	// And free
 	tee_ta_pop_current_session();
-
 	free_checkpoint(&checkpoint);
-
 	free_utc(&utc);
 
 	return TEE_SUCCESS;
@@ -238,6 +250,11 @@ static TEE_Result trusted_cr_execute_checkpoint_helper(uint32_t param_types,
 	return TEE_SUCCESS;
 }
 
+// This function could be used to execute a system call in the normal world
+// Then the return value could be copied to the secure world where the code
+// can continue. The difference here is that the code is paused in the secure
+// world. Nothing is unmapped, nothing is migrated back.
+// However this code is not supported right now.
 static TEE_Result trusted_cr_continue_execution(uint32_t param_types,
 			     TEE_Param params[TEE_NUM_PARAMS]) {
 #ifndef CFG_DISABLE_PRINTS_FOR_TRUSTED_CR				 
