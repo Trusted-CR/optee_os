@@ -47,6 +47,12 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 
 	// DMSG("elapsed: %ds%dms", stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
 
+	// Keep this code to do some security tests: testing access with devmem via the normal world
+	// #include <mm/core_memprot.h>
+	// vaddr_t vaddr = checkpoint;
+	// paddr_t pa = virt_to_phys(vaddr);
+	// DMSG("PHYSICAL ADDRESS: %p", pa);
+
 	// Initialize session / context / checkpoint variables
 	if(s != NULL) {
 		free(s);
