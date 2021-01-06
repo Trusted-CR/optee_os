@@ -9,6 +9,7 @@
 #include <string.h>
 #include <trusted_cr/jsmn.h>
 #include <trusted_cr/trusted_cr_checkpoint_parser.h>
+#include <kernel/tee_time.h>
 
 #define TA_NAME		"trusted_cr.ta"
 
@@ -38,6 +39,13 @@ static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigne
 static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE_Param * binary_data_buffer) {
 	TEE_Result res;
 	TEE_UUID uuid = TRUSTED_CR_CHECKPOINT_UUID;
+
+	// // Keep this piece of code to do time measurements
+	// TEE_Time start_time, stop_time;
+	// tee_time_get_sys_time(&start_time);
+	// tee_time_get_sys_time(&stop_time);
+
+	// DMSG("elapsed: %ds%dms", stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
 
 	// Initialize session / context / checkpoint variables
 	if(s != NULL) {
