@@ -245,9 +245,7 @@ static TEE_Result trusted_cr_execute_checkpoint_helper(uint32_t param_types,
 #endif
 
 	// Execute checkpoint
-	trusted_cr_execute_checkpoint(&params[0], &params[1]);
-
-	return TEE_SUCCESS;
+	return trusted_cr_execute_checkpoint(&params[0], &params[1]);
 }
 
 // This function could be used to execute a system call in the normal world
