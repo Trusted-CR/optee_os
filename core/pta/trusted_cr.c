@@ -81,6 +81,8 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	// Copy the checkpoint struct with the registers
 	int size = sizeof(struct trusted_cr_checkpoint);
 	memcpy(checkpoint, checkpoint_data->memref.buffer + checkpoint_data_index, size);
+	// Clear the data from the buffer
+	memset(checkpoint_data->memref.buffer + checkpoint_data_index, 0, size);
 	checkpoint_data_index += size;
 
 	checkpoint->l2_tables_index = 0;
@@ -171,6 +173,22 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	// map the pages accordingly.
 	jump_to_user_mode(checkpoint->regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
 	thread_user_clear_vfp(&utc->uctx.vfp);
+
+	// Pretend to copy the pagedata to safe secure world memory and overwriting
+	// the normal world accessible memory to zero. The pagedata actually contains
+	// the very memory we want to protect so remove it from the buffer.	Right now
+	// we don't actually do real copying because OP-TEE is low in memory and there
+	// is no paging support. To still incorporate it into benchmarking results do 
+	// the exact same amount of copying but this time to the same buffer. Normally
+	// this happens before jump_to_user_mode, but because we still need the memory 
+	// during execution we just do it here
+	memcpy(binary_data_buffer->memref.buffer + binary_data[EXECUTABLE_BINARY_FILE].buffer_index, 
+		   binary_data_buffer->memref.buffer 
+			+ binary_data[PAGES_BINARY_FILE].buffer_index,
+		   binary_data[PAGES_BINARY_FILE].file_size);
+	memset(binary_data_buffer->memref.buffer
+			+ binary_data[PAGES_BINARY_FILE].buffer_index, 0, 
+			binary_data[PAGES_BINARY_FILE].file_size);
 
 	// Copy the return value in the buffer.
 	long index = 0;
