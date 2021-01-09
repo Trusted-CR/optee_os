@@ -29,6 +29,9 @@ static struct trusted_cr_checkpoint * checkpoint = NULL;
 static struct tee_ta_session *s = NULL; 
 static struct user_ta_ctx * utc = NULL;
 
+// Keep this piece of code to do time measurements
+TEE_Time start_time, stop_time;
+
 // Declare functions
 static struct user_ta_ctx * create_user_ta_ctx(TEE_UUID * uuid);
 static void free_utc(struct user_ta_ctx ** u);
@@ -39,13 +42,6 @@ static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigne
 static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE_Param * binary_data_buffer) {
 	TEE_Result res;
 	TEE_UUID uuid = TRUSTED_CR_CHECKPOINT_UUID;
-
-	// // Keep this piece of code to do time measurements
-	// TEE_Time start_time, stop_time;
-	// tee_time_get_sys_time(&start_time);
-	// tee_time_get_sys_time(&stop_time);
-
-	// DMSG("elapsed: %ds%dms", stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
 
 	// Keep this code to do some security tests: testing access with devmem via the normal world
 	// #include <mm/core_memprot.h>
@@ -167,11 +163,16 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	DMSG("\n\nTRUSTED_CR - RUN! Entry address: %p", (void *) checkpoint->regs.entry_addr);
 #endif
 
+	tee_time_get_sys_time(&stop_time);
+	DMSG("SW: Setting up execution: elapsed: %ds%dms", stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
+	tee_time_get_sys_time(&start_time);
 	// Jump into the checkpoint code without any page mapped.
 	// The pagefault will be catched in abort.c: abort_handler()
 	// which will call tee_pager.c: tee_pager_handle_fault() which will
 	// map the pages accordingly.
 	jump_to_user_mode(checkpoint->regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
+
+	tee_time_get_sys_time(&start_time);
 	thread_user_clear_vfp(&utc->uctx.vfp);
 
 	// Pretend to copy the pagedata to safe secure world memory and overwriting
@@ -198,6 +199,10 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	index += sizeof(struct trusted_cr_checkpoint_regs);
 
 	tee_ta_pop_current_session();
+
+	tee_time_get_sys_time(&stop_time);
+	DMSG("SW: Copying data back: elapsed: %ds%dms", stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
+	tee_time_get_sys_time(&start_time);
 
 	return TEE_SUCCESS;
 }
@@ -254,6 +259,11 @@ static TEE_Result trusted_cr_checkpoint_back(uint32_t param_types,
 	tee_ta_pop_current_session();
 	free_checkpoint(&checkpoint);
 	free_utc(&utc);
+
+	tee_time_get_sys_time(&stop_time);
+	DMSG("SW: Checkpointed data back: elapsed: %ds%dms", 
+	stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
+	tee_time_get_sys_time(&start_time);
 
 	return TEE_SUCCESS;
 }
@@ -382,8 +392,10 @@ static TEE_Result invoke_command(void *psess __unused,
 {
 	switch (cmd) {
 	case TRUSTED_CR_EXECUTE_CHECKPOINT:
+		tee_time_get_sys_time(&start_time);
 		return trusted_cr_execute_checkpoint_helper(ptypes, params);
 	case TRUSTED_CR_CHECKPOINT_BACK:
+		tee_time_get_sys_time(&start_time);
 		return trusted_cr_checkpoint_back(ptypes, params);
 	case TRUSTED_CR_CONTINUE_EXECUTION:
 		return trusted_cr_continue_execution(ptypes, params);
