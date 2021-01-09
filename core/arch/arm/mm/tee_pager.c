@@ -673,7 +673,7 @@ struct tee_pager_area * trusted_cr_map_area(vaddr_t va, TEE_Result * res) {
 					// Map the page.
 					*res = trusted_cr_alloc_and_map_ldelf_fobj(utc, 1, uctx->checkpoint->vm_areas[i].protection, &page_va);
 					if(*res != TEE_SUCCESS) {
-						DMSG("Unable to map checkpointed page %p, error: %p", va, res);
+						DMSG("Unable to map checkpointed page %p, error: %p", va, *res);
 
 						if(*res == TEE_ERROR_OUT_OF_MEMORY) 
 							DMSG("Out of memory.");
