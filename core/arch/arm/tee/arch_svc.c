@@ -28,6 +28,10 @@
 #include "arch_svc_private.h"
 #include <trusted_cr/trusted_cr_checkpointing.h>
 
+#include <kernel/tee_time.h>
+
+#define CLOCK_MONOTONIC 1
+
 #if (TRACE_LEVEL == TRACE_FLOW) && defined(CFG_TEE_CORE_TA_TRACE)
 #define TRACE_SYSCALLS
 #endif
@@ -260,7 +264,32 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 			struct trusted_cr_checkpoint * checkpoint = ctx->uctx.checkpoint;
 			bool stop_execution = false;
 			
-			if(scn == TRUSTED_CR_SYSCALL_MIGRATE_BACK) {
+			if(scn == TRUSTED_CR_SYSCALL_CLOCK_GETTIME) {
+				int clock_id = regs->x[0];
+				
+				if(clock_id == CLOCK_MONOTONIC) {
+					TEE_Time current_time;
+					tee_time_get_sys_time(&current_time);
+
+					struct timespec {
+						long int tv_sec;		
+						long int tv_nsec;	
+					};
+
+					// The time needs to be stored at the location in x1
+					struct timespec * time = regs->x[1];
+
+					time->tv_sec = current_time.seconds;
+					time->tv_nsec = current_time.millis * 1000;		
+
+					// Return 0 for success
+					set_svc_retval(regs, 0);
+					return true;
+				} else {					
+					stop_execution = true;
+					checkpoint->result = TRUSTED_CR_SYSCALL_UNSUPPORTED;
+				}
+			} else if(scn == TRUSTED_CR_SYSCALL_MIGRATE_BACK) {
 				DMSG("Program asks to migrate back");
 				regs->x[1] = 0;
 				stop_execution = true;
