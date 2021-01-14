@@ -268,9 +268,6 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				int clock_id = regs->x[0];
 				
 				if(clock_id == CLOCK_MONOTONIC) {
-					TEE_Time current_time;
-					tee_time_get_sys_time(&current_time);
-
 					struct timespec {
 						long int tv_sec;		
 						long int tv_nsec;	
@@ -279,8 +276,11 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 					// The time needs to be stored at the location in x1
 					struct timespec * time = regs->x[1];
 
-					time->tv_sec = current_time.seconds;
-					time->tv_nsec = current_time.millis * 1000;		
+					uint64_t cntpct = read_cntpct();
+					uint32_t cntfrq = read_cntfrq();
+
+					time->tv_sec = cntpct / cntfrq;
+					time->tv_nsec = (cntpct % cntfrq) / (cntfrq / 1000000);		
 
 					// Return 0 for success
 					set_svc_retval(regs, 0);
