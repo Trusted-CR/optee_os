@@ -320,6 +320,7 @@ bool user_ta_handle_svc(struct thread_svc_regs *regs)
 				} else {
 					DMSG("Will need to handle file write to fd: %d", fd);
 					stop_execution = true;
+					checkpoint->result = TRUSTED_CR_SYSCALL_UNSUPPORTED;
 				}
 			} else if(scn == TRUSTED_CR_SYSCALL_NANOSLEEP) {
 				uint64_t * s = regs->x[2];
