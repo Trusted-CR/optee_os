@@ -17,9 +17,6 @@
 #include <tee/tee_svc.h>
 #include <trace.h>
 
-
-#include <kernel/tee_time.h>
-
 #include <trusted_cr/trusted_cr_checkpointing.h>
 
 #include "vfp_private.h"
@@ -27,8 +24,6 @@
 #include "thread_private.h"
 
 static bool in_page_fault = false;
-
-bool PROFILE_PAGEFAULTS = false;
 
 enum fault_type {
 	FAULT_TYPE_USER_TA_PANIC,
@@ -539,8 +534,7 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 		return FAULT_TYPE_IGNORE;
 	}
 }
-// Keep this piece of code to do time measurements
-TEE_Time start_time, stop_time;
+
 void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 {
 	struct abort_info ai;
@@ -566,9 +560,6 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 #endif
 	case FAULT_TYPE_PAGEABLE:
 	default:
-		if(PROFILE_PAGEFAULTS)
-			tee_time_get_sys_time(&start_time);
-			
 		// DMSG("PAGE FAULT DETECTED: pc %p\tva %p", ai.pc, ai.va);
 		if (thread_get_id_may_fail() < 0) {
 			abort_print_error(&ai);
@@ -611,11 +602,6 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 			save_abort_info_in_tsd(&ai);
 			vfp_disable();
 			handle_user_ta_panic(&ai);
-		}
-
-		if(PROFILE_PAGEFAULTS) {
-			tee_time_get_sys_time(&stop_time);
-			DMSG("SW: Pagefault time: elapsed: %ds%dms", stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
 		}
 		break;
 	}

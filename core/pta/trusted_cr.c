@@ -39,8 +39,6 @@ static void free_checkpoint(struct trusted_cr_checkpoint ** check);
 static void set_vfp_registers(uint64_t * vregs, struct thread_user_vfp_state * state);
 static void jump_to_user_mode(uint32_t pstate, unsigned long entry_func, unsigned long user_sp, uint64_t tpidr_el0_addr, uint64_t * regs);
 
-extern bool PROFILE_PAGEFAULTS;
-
 static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE_Param * binary_data_buffer) {
 	TEE_Result res;
 	TEE_UUID uuid = TRUSTED_CR_CHECKPOINT_UUID;
@@ -168,15 +166,11 @@ static TEE_Result trusted_cr_execute_checkpoint(TEE_Param * checkpoint_data, TEE
 	tee_time_get_sys_time(&stop_time);
 	DMSG("SW: Setting up execution: elapsed: %ds%dms", stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
 	tee_time_get_sys_time(&start_time);
-
-	PROFILE_PAGEFAULTS = true;
 	// Jump into the checkpoint code without any page mapped.
 	// The pagefault will be catched in abort.c: abort_handler()
 	// which will call tee_pager.c: tee_pager_handle_fault() which will
 	// map the pages accordingly.
 	jump_to_user_mode(checkpoint->regs.pstate, utc->entry_func, utc->ldelf_stack_ptr, checkpoint->regs.tpidr_el0_addr, checkpoint->regs.regs);
-
-	PROFILE_PAGEFAULTS = false;
 
 	tee_time_get_sys_time(&stop_time);
 	DMSG("SW: Execution time: elapsed: %ds%dms", stop_time.seconds - start_time.seconds, stop_time.millis - start_time.millis);
